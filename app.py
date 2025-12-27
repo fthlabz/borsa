@@ -21,7 +21,7 @@ st.markdown("""
     .stDeployButton {display: none !important;}
     div[class*="viewerBadge"] {display: none !important;}
     
-    /* INPUT ALANI (SARI ÇİZGİLİ) */
+    /* INPUT ALANI */
     .stTextInput > div > div > input { 
         color: #FFD700 !important; 
         background-color: #050505 !important; 
@@ -54,7 +54,7 @@ st.markdown("""
         text-transform: uppercase;
     }
 
-    /* ÜST BAR (FİYAT - SİNYAL) */
+    /* ÜST BAR */
     .top-bar-container {
         display: flex;
         justify-content: space-between;
@@ -65,7 +65,7 @@ st.markdown("""
     .price-text { font-size: 1.4em; font-weight: bold; color: white; }
     .signal-text { font-size: 1.1em; font-weight: bold; text-align: right; }
 
-    /* İNDİKATÖR KUTULARI (CSS KARTLARI) */
+    /* İNDİKATÖR KUTULARI */
     .ind-card {
         background-color: #111;
         border: 1px solid #333;
@@ -77,6 +77,16 @@ st.markdown("""
     .ind-title { font-size: 0.9em; font-weight: bold; color: #FFD700; display: block; }
     .ind-status { font-size: 0.8em; font-weight: bold; margin: 2px 0; display: block; }
     .ind-val { font-size: 0.7em; color: #666; font-family: monospace; display: block; }
+
+    /* GRAFİK İÇİN ÖZEL ÇERÇEVE (CSS İLE) */
+    /* Streamlit'in grafik kapsayıcısını hedefleyip çerçeve ekliyoruz */
+    div[data-testid="stPlotlyChart"] {
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 5px;
+        background-color: #080808; /* Grafiğin arkasına hafif ton */
+        margin-top: 10px;
+    }
 
     /* RENKLER */
     .c-green { color: #00FF00; text-shadow: 0 0 5px #003300; }
@@ -142,21 +152,15 @@ def analyze_stock_data(df):
     return df
 
 # -----------------------------------------------------------------------------
-# 4. ARAYÜZ (GÜVENLİ YAPI)
+# 4. ARAYÜZ
 # -----------------------------------------------------------------------------
-# Ekranı daraltıyoruz
 c_left, c_center, c_right = st.columns([1, 2, 1])
 
 with c_center:
     if 'symbol' not in st.session_state: st.session_state.symbol = "THYAO"
     
-    # 1. ÜST BİLGİ YERİ
     top_placeholder = st.empty()
-    
-    # 2. INPUT
     user_input = st.text_input("", value="THYAO", placeholder="Hisse Gir").upper()
-    
-    # 3. İNDİKATÖRLER VE GRAFİK YERİ
     ind_placeholder = st.container()
     chart_placeholder = st.empty()
 
@@ -177,7 +181,6 @@ with c_center:
         bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
         bear_count = 4 - bull_count
         
-        # ANA SİNYAL CSS
         if bull_count >= 3:
             sig_txt = "GÜÇLÜ AL"
             sig_cls = "c-green"
@@ -188,9 +191,7 @@ with c_center:
             sig_txt = "NÖTR"
             sig_cls = "c-gray"
 
-        # --- GÖRSELLEŞTİRME ---
-        
-        # A) FİYAT VE SİNYAL (HTML)
+        # A) FİYAT VE SİNYAL
         top_html = f"""
         <div class="top-bar-container">
             <div class="price-text">{last['Close']:.2f} ₺</div>
@@ -199,10 +200,7 @@ with c_center:
         """
         top_placeholder.markdown(top_html, unsafe_allow_html=True)
 
-        # B) İNDİKATÖRLER (KUTULAR) - GÜVENLİ YÖNTEM
-        # Tek bir büyük HTML yerine, Streamlit kolonları içine küçük HTML'ler koyuyoruz.
-        # Bu yöntem kodun ekrana metin olarak basılmasını engeller.
-        
+        # B) İNDİKATÖRLER
         def make_card(label, val, is_bull):
             if is_bull:
                 icon = "▲"
@@ -222,21 +220,20 @@ with c_center:
             """
 
         with ind_placeholder:
-            # İsim
             st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
-            
-            # 2 Satır 2 Sütun Izgara
             r1c1, r1c2 = st.columns(2)
             with r1c1: st.markdown(make_card("ZL", last['ZLSMA'], zlsma_bull), unsafe_allow_html=True)
             with r1c2: st.markdown(make_card("SM", last['SMA21'], sma_bull), unsafe_allow_html=True)
-            
             r2c1, r2c2 = st.columns(2)
             with r2c1: st.markdown(make_card("SA", last['SAR'], sar_bull), unsafe_allow_html=True)
             with r2c2: st.markdown(make_card("AD", last['ADX_VAL'], adx_bull), unsafe_allow_html=True)
 
-        # C) GRAFİK
+        # C) GRAFİK (ÇERÇEVELİ & SON MUM AYARLI)
         end_date = df.index[-1]
         start_date = end_date - timedelta(days=30)
+        
+        # Son mumun görünmesi için sağa boşluk ekliyoruz (Buffer)
+        buffer_date = end_date + timedelta(days=3) # +3 gün ekledik ki sağda boşluk kalsın
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
@@ -250,7 +247,8 @@ with c_center:
             paper_bgcolor='black', 
             plot_bgcolor='black', 
             showlegend=False,
-            xaxis=dict(range=[start_date, end_date], fixedrange=True, visible=False),
+            # X Ekseninde Bitiş Tarihini (end_date) değil, tamponlu tarihi (buffer_date) kullanıyoruz
+            xaxis=dict(range=[start_date, buffer_date], fixedrange=True, visible=False),
             yaxis=dict(fixedrange=True, visible=False),
             dragmode=False
         )
