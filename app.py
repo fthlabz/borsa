@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import timedelta
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & CSS
+# 1. AYARLAR & CSS (TASARIM AYNEN KORUNDU)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
@@ -142,37 +142,20 @@ def analyze_stock_data(df):
     # 2. SMA 21 (MAVİ ÇİZGİ)
     df['SMA21'] = ta.sma(df['Close'], length=21)
     
-    # -----------------------------------------------------------
-    # 3. SAR OSCILLATOR (ORTA PANEL)
-    # -----------------------------------------------------------
-    # A) Standart SAR
+    # 3. PARABOLIC SAR (STANDART)
+    # Gönderdiğin ayarlar: start=0.02, increment=0.02, max=0.2
     psar = df.ta.psar(start=0.02, increment=0.02, max=0.2)
+    
+    # pandas_ta PSAR'ı Long ve Short olarak ayırır, bunları tek sütunda birleştiriyoruz
     psar_cols = [c for c in psar.columns if "PSAR" in c]
     df['SAR'] = psar[psar_cols].bfill(axis=1).iloc[:, 0]
-
-    # B) NORMALIZED PRICE (YEŞİL ÇİZGİ)
-    stoch = ta.stoch(df['High'], df['Low'], df['Close'], k=14, d=3)
-    df['Norm_Price'] = (stoch['STOCHk_14_3_3'] - 50) * 2
-
-    # C) NORMALIZED SAR (KIRMIZI ÇİZGİ)
-    high14 = df['High'].rolling(14).max()
-    low14 = df['Low'].rolling(14).min()
-    range14 = high14 - low14
-    range14 = range14.replace(0, 1) 
-    sar_loc = (df['SAR'] - low14) / range14 * 100
-    df['Norm_SAR'] = (sar_loc - 50) * 2
-
-    # D) SAR DOTS (NOKTA)
-    df['SAR_Dot'] = df.apply(lambda x: -100 if x['Close'] > x['SAR'] else 100, axis=1)
-
-    # -----------------------------------------------------------
-    # 4. ADX ve DI (ALT PANEL - RESİMDEKİ EN ALT KISIM)
-    # -----------------------------------------------------------
+    
+    # 4. ADX ve DI
     df.ta.adx(length=14, append=True)
     try:
-        df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]] # Mavi Noktalı
-        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]] # Yeşil Çizgi
-        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]] # Kırmızı Çizgi
+        df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]] # Trend Gücü
+        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]] # DI+
+        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]] # DI-
     except:
         df['ADX_VAL'] = 0; df['DMP_VAL'] = 0; df['DMN_VAL'] = 0
         
@@ -199,32 +182,34 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
-        # --- SİNYAL MANTIĞI ---
+        # --- YENİ SİNYAL MANTIĞI (STANDART SAR) ---
         
-        # 1. SAR DOT: -100 ise AL (Orta Panel)
-        sar_dot_bull = last['SAR_Dot'] == -100
+        # 1. PARABOLIC SAR: Fiyat SAR'ın üstündeyse AL
+        sar_bull = last['Close'] > last['SAR']
         
-        # 2. SAR CROSS: Yeşil > Kırmızı (Orta Panel)
-        sar_cross_bull = last['Norm_Price'] > last['Norm_SAR']
-        
-        # 3. ADX/DI: DI+ > DI- (Alt Panel)
+        # 2. ADX/DI: DI+ > DI- ise AL
         adx_bull = last['DMP_VAL'] > last['DMN_VAL']
         
-        # 4. ZLSMA: Fiyat > ZLSMA (Grafik)
+        # 3. ZLSMA: Fiyat ZLSMA üstündeyse AL
         zlsma_bull = last['Close'] > last['ZLSMA']
         
-        # SİNYAL KARARI (En az 3 Teyit)
-        bull_signals = [sar_dot_bull, sar_cross_bull, adx_bull, zlsma_bull]
+        # SİNYAL KARARI (3'lü Teyit veya Çoğunluk)
+        bull_signals = [sar_bull, adx_bull, zlsma_bull]
         
-        if sum(bull_signals) >= 3:
+        if all(bull_signals): # Hepsi AL ise
             sig_txt = "GÜÇLÜ AL"
             sig_cls = "c-green"
-        elif sum(bull_signals) <= 1: 
+        elif not any(bull_signals): # Hepsi SAT ise
             sig_txt = "GÜÇLÜ SAT"
             sig_cls = "c-red"
         else:
-            sig_txt = "NÖTR / BEKLE"
-            sig_cls = "c-gray"
+            # Karışık durum
+            if sum(bull_signals) >= 2:
+                sig_txt = "AL (ZAYIF)"
+                sig_cls = "c-green"
+            else:
+                sig_txt = "SAT (ZAYIF)"
+                sig_cls = "c-red"
 
         # A) FİYAT VE SİNYAL
         top_html = f"""
@@ -235,7 +220,7 @@ with c_center:
         """
         top_placeholder.markdown(top_html, unsafe_allow_html=True)
 
-        # B) İNDİKATÖRLER
+        # B) İNDİKATÖRLER (KARTLAR)
         def make_card(label, val_str, is_bull):
             if is_bull:
                 icon = "▲"
@@ -257,7 +242,7 @@ with c_center:
         with ind_placeholder:
             st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
             
-            # SATIR 1
+            # SATIR 1: ZLSMA ve SMA 21 (Değişmedi)
             r1c1, r1c2 = st.columns(2)
             with r1c1: 
                 val_txt = f"{last['ZLSMA']:.2f}"
@@ -267,38 +252,17 @@ with c_center:
                 val_txt = f"{last['SMA21']:.2f}"
                 st.markdown(make_card("SMA 21", val_txt, sma_bull), unsafe_allow_html=True)
             
-            # SATIR 2 (SAR OSC - ORTA PANEL)
+            # SATIR 2: SAR (Yeni Standart) ve ADX (Değişmedi)
             r2c1, r2c2 = st.columns(2)
             with r2c1: 
-                val_txt = f"P:{last['Norm_Price']:.0f} | S:{last['Norm_SAR']:.0f}"
-                st.markdown(make_card("SAR OSC (P/S)", val_txt, sar_cross_bull), unsafe_allow_html=True)
+                # SAR Değeri
+                val_txt = f"{last['SAR']:.2f}"
+                # Fiyat SAR'ın üstünde mi altında mı?
+                sar_text = "AL" if sar_bull else "SAT"
+                st.markdown(make_card(f"P. SAR ({sar_text})", val_txt, sar_bull), unsafe_allow_html=True)
             with r2c2:
-                val_txt = f"DOT: {int(last['SAR_Dot'])}"
-                st.markdown(make_card("SAR DOT", val_txt, sar_dot_bull), unsafe_allow_html=True)
-
-            # SATIR 3 (ADX/DI - ALT PANEL)
-            r3c1, r3c2 = st.columns(2)
-            with r3c1:
-                 # Buraya ADX Gücünü de ekledim (Trend Gücü)
                  val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
-                 st.markdown(make_card("DI + / DI -", val_txt, adx_bull), unsafe_allow_html=True)
-            with r3c2:
-                 # ADX Gücü (Mavi Noktalı Çizgi Değeri)
-                 adx_strength = last['ADX_VAL']
-                 # ADX genelde 25 üstü güçlü trenddir, renklendirmeyi ona göre yapalım
-                 is_trend_strong = adx_strength > 20
-                 trend_text = "TREND VAR" if is_trend_strong else "YATAY"
-                 # Renk mantığı: Trend güçlüyse Yeşil, değilse Gri
-                 cls_trend = "c-green" if is_trend_strong else "c-gray"
-                 
-                 # Özel Kart formatı
-                 st.markdown(f"""
-                 <div class="ind-card">
-                    <span class="ind-title">ADX GÜÇ</span>
-                    <span class="ind-status {cls_trend}">{adx_strength:.2f}</span>
-                    <span class="ind-val">{trend_text}</span>
-                 </div>
-                 """, unsafe_allow_html=True)
+                 st.markdown(make_card("ADX / DI", val_txt, adx_bull), unsafe_allow_html=True)
 
         # C) GRAFİK
         end_date = df.index[-1]
@@ -309,7 +273,16 @@ with c_center:
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
         fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZL'))
         fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SM'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['SAR'], mode='markers', marker=dict(color='white', size=2), name='SAR'))
+        
+        # PARABOLIC SAR ÇİZİMİ (Cross Style)
+        # Pine Script'te style=plot.style_cross vermişsin. Plotly'de 'cross' sembolü kullanıyoruz.
+        fig.add_trace(go.Scatter(
+            x=df.index, 
+            y=df['SAR'], 
+            mode='markers', 
+            marker=dict(color='white', size=4, symbol='cross'), 
+            name='SAR'
+        ))
         
         fig.update_layout(
             margin=dict(l=0, r=0, t=10, b=0),
