@@ -5,7 +5,7 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & TASARIM (MENÜ GİZLEME VE CSS)
+# 1. AYARLAR & TASARIM (FTHLABZ GHOST MODE)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
@@ -14,23 +14,37 @@ st.markdown("""
     /* Ana Tema: Siyah & Gold */
     .stApp { background-color: #000000; color: #FFD700; }
     
-    /* ---------------------------------------------------- */
-    /* GİZLEME BÜYÜSÜ (Header, Footer, Hamburger Menü)      */
-    /* ---------------------------------------------------- */
+    /* ------------------------------------------------------- */
+    /* 🛑 GİZLEME BÖLÜMÜ (TÜM REKLAMLARI VE ÇUBUKLARI SİL) 🛑 */
+    /* ------------------------------------------------------- */
     
-    /* En tepedeki gri çubuk ve GitHub ikonları */
-    header {visibility: hidden;}
+    /* 1. En tepedeki Streamlit çubuğunu yok et */
+    header[data-testid="stHeader"] {
+        visibility: hidden !important;
+        display: none !important;
+    }
     
-    /* Sağ üstteki 3 nokta menüsü */
+    /* 2. En alttaki "Built with Streamlit" footer'ını yok et */
+    footer {
+        visibility: hidden !important;
+        display: none !important;
+        height: 0px !important;
+    }
+    
+    /* 3. "Fullscreen" butonunun olduğu toolbar'ı yok et */
+    [data-testid="stToolbar"] {
+        visibility: hidden !important;
+        display: none !important;
+    }
+    
+    /* 4. Sağ üstteki hamburger menüyü ve deploy butonunu yok et */
+    .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     
-    /* En alttaki "Made with Streamlit" yazısı */
-    footer {visibility: hidden;}
+    /* 5. Gömülü moddaki (Embed) alt çubuğu zorla sil */
+    .viewerBadge_container__1QSob {display: none !important;}
     
-    /* Resimlerin etrafındaki büyütme butonu */
-    button[title="View fullscreen"] {visibility: hidden;}
-    
-    /* ---------------------------------------------------- */
+    /* ------------------------------------------------------- */
 
     /* Input Alanı (Ortalı ve Şık) */
     .stTextInput > div > div > input { 
@@ -103,7 +117,6 @@ def analyze_stock(symbol):
         # 4. ADX (Güç için)
         df.ta.adx(length=14, append=True)
         try:
-            # ADX sütunlarını güvenli çekme
             df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]]
             df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]]
             df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]]
@@ -128,13 +141,13 @@ elif df is not None:
     last = df.iloc[-1]
     prev = df.iloc[-2]
     
-    # --- MANTIK (LOGIC) ---
+    # --- MANTIK ---
     zlsma_bull = last['Close'] > last['ZLSMA']
     sma_bull = last['Close'] > last['SMA21']
     sar_bull = last['Close'] > last['SAR']
     adx_bull = last['DMP_VAL'] > last['DMN_VAL']
     
-    # --- PUANLAMA (En az 3 Onay) ---
+    # --- PUANLAMA ---
     bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
     bear_count = 4 - bull_count
     
@@ -145,21 +158,20 @@ elif df is not None:
     elif bear_count >= 3:
         signal_text = "🔻 SAT" if bear_count == 3 else "🩸 GÜÇLÜ SAT"
 
-    # --- METRİKLER (2x2 Mobil Düzen) ---
+    # --- METRİKLER (Mobil Düzen) ---
     
-    # SATIR 1: FİYAT ve SİNYAL
+    # SATIR 1
     m_row1_col1, m_row1_col2 = st.columns(2)
     with m_row1_col1:
         fiyat_degisim = last['Close'] - prev['Close']
         st.metric("FİYAT", f"{last['Close']:.2f}", f"{fiyat_degisim:.2f}")
     with m_row1_col2:
-        # Renk mantığı: AL (Yeşil), SAT (Kırmızı)
         delta_color = "normal" if bull_count >=3 else "inverse" if bear_count >=3 else "off"
         st.metric("SİNYAL", signal_text, f"Güç: {int((max(bull_count, bear_count)/4)*100)}%", delta_color=delta_color)
 
-    st.write("") # Boşluk
+    st.write("") 
 
-    # SATIR 2: ZLSMA ve SMA
+    # SATIR 2
     m_row2_col1, m_row2_col2 = st.columns(2)
     with m_row2_col1:
         z_icon = "🟢 YUKARI" if zlsma_bull else "🔴 AŞAĞI"
@@ -168,9 +180,9 @@ elif df is not None:
         s_icon = "🟢 YUKARI" if sma_bull else "🔴 AŞAĞI"
         st.metric("SMA 21 (Yön)", s_icon, f"{last['SMA21']:.2f}", delta_color="off")
 
-    st.write("") # Boşluk
+    st.write("") 
 
-    # SATIR 3: SAR ve ADX
+    # SATIR 3
     m_row3_col1, m_row3_col2 = st.columns(2)
     with m_row3_col1:
         sar_durum = "🟢 ALICILI" if sar_bull else "🔴 SATICILI"
@@ -183,17 +195,11 @@ elif df is not None:
     st.markdown("---")
     fig = go.Figure()
     
-    # Mumlar
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
-    
-    # Çizgiler
     fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZLSMA'))
     fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SMA 21'))
-    
-    # SAR Noktaları
     fig.add_trace(go.Scatter(x=df.index, y=df['SAR'], mode='markers', marker=dict(color='white', size=2), name='SAR'))
 
-    # Grafik Ayarları
     fig.update_layout(
         margin=dict(l=10, r=10, t=30, b=10),
         template="plotly_dark", 
@@ -209,13 +215,12 @@ else:
     st.warning("Veriler yükleniyor...")
 
 # -----------------------------------------------------------------------------
-# 5. FOOTER (YASAL UYARI - EN DİPTE)
+# 5. FOOTER
 # -----------------------------------------------------------------------------
 st.markdown("""
 <div class="footer-box">
     ⚠️ <b>YASAL UYARI</b><br>
-    Burada yer alan bilgi, yorum ve tavsiyeler <b>YATIRIM DANIŞMANLIĞI KAPSAMINDA DEĞİLDİR.</b> 
-    Sadece kişisel teknik analiz çalışmasıdır. <br><br>
+    Burada yer alan bilgi, yorum ve tavsiyeler <b>YATIRIM DANIŞMANLIĞI KAPSAMINDA DEĞİLDİR.</b><br>
     FTHLABZ TECHNOLOGY © 2025
 </div>
 """, unsafe_allow_html=True)
