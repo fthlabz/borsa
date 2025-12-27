@@ -5,7 +5,7 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & TASARIM (FTHLABZ MOBILE PRO)
+# 1. AYARLAR & TASARIM (MENÜ GİZLEME VE CSS)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
@@ -14,6 +14,24 @@ st.markdown("""
     /* Ana Tema: Siyah & Gold */
     .stApp { background-color: #000000; color: #FFD700; }
     
+    /* ---------------------------------------------------- */
+    /* GİZLEME BÜYÜSÜ (Header, Footer, Hamburger Menü)      */
+    /* ---------------------------------------------------- */
+    
+    /* En tepedeki gri çubuk ve GitHub ikonları */
+    header {visibility: hidden;}
+    
+    /* Sağ üstteki 3 nokta menüsü */
+    #MainMenu {visibility: hidden;}
+    
+    /* En alttaki "Made with Streamlit" yazısı */
+    footer {visibility: hidden;}
+    
+    /* Resimlerin etrafındaki büyütme butonu */
+    button[title="View fullscreen"] {visibility: hidden;}
+    
+    /* ---------------------------------------------------- */
+
     /* Input Alanı (Ortalı ve Şık) */
     .stTextInput > div > div > input { 
         color: #FFD700; 
@@ -54,7 +72,7 @@ st.markdown("""
 # 2. BAŞLIK (DERLİ TOPLU LOGO)
 # -----------------------------------------------------------------------------
 st.markdown("""
-<div style='text-align: center; padding-bottom: 20px;'>
+<div style='text-align: center; padding-bottom: 20px; margin-top: -50px;'>
     <h1 style='font-size: 2.5em; margin: 0; text-shadow: 2px 2px 4px #000000;'>⚜️ FTHLABZ ⚜️</h1>
     <h3 style='font-size: 1.2em; margin: 0; letter-spacing: 3px; opacity: 0.9;'>PRO TRADER SYSTEM</h3>
 </div>
@@ -84,13 +102,12 @@ def analyze_stock(symbol):
 
         # 4. ADX (Güç için)
         df.ta.adx(length=14, append=True)
-        # Sütun isimlerini güvenli alalım
         try:
+            # ADX sütunlarını güvenli çekme
             df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]]
             df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]]
             df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]]
         except:
-            # Yedek hesaplama (hata olursa çökmesin)
             df['ADX_VAL'] = 0; df['DMP_VAL'] = 0; df['DMN_VAL'] = 0
 
         return df, None
@@ -99,7 +116,6 @@ def analyze_stock(symbol):
 # -----------------------------------------------------------------------------
 # 4. ARAYÜZ VE SİNYAL MANTIĞI
 # -----------------------------------------------------------------------------
-# Input Alanı
 col_in1, col_in2, col_in3 = st.columns([1, 2, 1])
 with col_in2:
     ticker = st.text_input("", value="THYAO.IS", placeholder="Hisse Kodu (Örn: GARAN.IS)").upper()
@@ -113,16 +129,9 @@ elif df is not None:
     prev = df.iloc[-2]
     
     # --- MANTIK (LOGIC) ---
-    # 1. ZLSMA Durumu
     zlsma_bull = last['Close'] > last['ZLSMA']
-    
-    # 2. SMA 21 Durumu
     sma_bull = last['Close'] > last['SMA21']
-    
-    # 3. SAR Durumu
     sar_bull = last['Close'] > last['SAR']
-    
-    # 4. ADX Durumu
     adx_bull = last['DMP_VAL'] > last['DMN_VAL']
     
     # --- PUANLAMA (En az 3 Onay) ---
@@ -130,53 +139,42 @@ elif df is not None:
     bear_count = 4 - bull_count
     
     signal_text = "NÖTR / BEKLE"
-    signal_color = "off"
     
     if bull_count >= 3:
         signal_text = "🚀 AL" if bull_count == 3 else "🚀 GÜÇLÜ AL"
-        signal_color = "normal" # Streamlit yeşil algılar (positive delta)
     elif bear_count >= 3:
         signal_text = "🔻 SAT" if bear_count == 3 else "🩸 GÜÇLÜ SAT"
-        signal_color = "inverse" # Streamlit kırmızı algılar (negative delta)
 
-    # --- METRİKLER (2x2 Düzen - Mobilde Yan Yana) ---
+    # --- METRİKLER (2x2 Mobil Düzen) ---
     
     # SATIR 1: FİYAT ve SİNYAL
     m_row1_col1, m_row1_col2 = st.columns(2)
-    
     with m_row1_col1:
         fiyat_degisim = last['Close'] - prev['Close']
         st.metric("FİYAT", f"{last['Close']:.2f}", f"{fiyat_degisim:.2f}")
-        
     with m_row1_col2:
-        # Renk hilesi: Eğer AL ise delta pozitif (yeşil), SAT ise negatif (kırmızı) olsun
-        delta_val = bull_count if bull_count >= 3 else -bear_count if bear_count >=3 else 0
-        st.metric("SİNYAL", signal_text, f"Güç: {int((bull_count/4)*100)}%" if bull_count >=3 else f"Güç: {int((bear_count/4)*100)}%", delta_color="normal" if bull_count >=3 else "inverse")
+        # Renk mantığı: AL (Yeşil), SAT (Kırmızı)
+        delta_color = "normal" if bull_count >=3 else "inverse" if bear_count >=3 else "off"
+        st.metric("SİNYAL", signal_text, f"Güç: {int((max(bull_count, bear_count)/4)*100)}%", delta_color=delta_color)
 
-    st.write("") # Küçük boşluk
+    st.write("") # Boşluk
 
-    # SATIR 2: ZLSMA ve SMA (OKLU GÖSTERİM)
+    # SATIR 2: ZLSMA ve SMA
     m_row2_col1, m_row2_col2 = st.columns(2)
-    
     with m_row2_col1:
-        # ZLSMA Logic
         z_icon = "🟢 YUKARI" if zlsma_bull else "🔴 AŞAĞI"
         st.metric("ZLSMA (Yön)", z_icon, f"{last['ZLSMA']:.2f}", delta_color="off")
-        
     with m_row2_col2:
-        # SMA Logic
         s_icon = "🟢 YUKARI" if sma_bull else "🔴 AŞAĞI"
         st.metric("SMA 21 (Yön)", s_icon, f"{last['SMA21']:.2f}", delta_color="off")
 
-    st.write("") # Küçük boşluk
+    st.write("") # Boşluk
 
-    # SATIR 3: SAR ve ADX (YUKARI ALINDI)
+    # SATIR 3: SAR ve ADX
     m_row3_col1, m_row3_col2 = st.columns(2)
-    
     with m_row3_col1:
         sar_durum = "🟢 ALICILI" if sar_bull else "🔴 SATICILI"
         st.metric("SAR (Baskı)", sar_durum, f"{last['SAR']:.2f}", delta_color="off")
-        
     with m_row3_col2:
         adx_durum = "🟢 BOĞA" if adx_bull else "🔴 AYI"
         st.metric("ADX (Trend)", adx_durum, f"{last['ADX_VAL']:.1f}", delta_color="off")
@@ -195,15 +193,15 @@ elif df is not None:
     # SAR Noktaları
     fig.add_trace(go.Scatter(x=df.index, y=df['SAR'], mode='markers', marker=dict(color='white', size=2), name='SAR'))
 
-    # Grafik Ayarları (Mobil İçin Yükseklik Optimize Edildi)
+    # Grafik Ayarları
     fig.update_layout(
-        margin=dict(l=10, r=10, t=30, b=10), # Kenar boşluklarını azalttık
+        margin=dict(l=10, r=10, t=30, b=10),
         template="plotly_dark", 
-        height=400, # Mobil için ideal yükseklik
+        height=400, 
         paper_bgcolor='black', 
         plot_bgcolor='black', 
         font=dict(color='#FFD700'),
-        legend=dict(orientation="h", y=1.1, x=0) # Legend üstte yatay
+        legend=dict(orientation="h", y=1.1, x=0)
     )
     st.plotly_chart(fig, use_container_width=True)
 
