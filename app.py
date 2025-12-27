@@ -136,26 +136,23 @@ def get_smart_data(raw_symbol):
 def analyze_stock_data(df):
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.droplevel(1)
     
-    # 1. ZLSMA (SARI ÇİZGİ)
+    # 1. ZLSMA (ŞAHİN)
     df['ZLSMA'] = ta.linreg(df['Close'], length=50, offset=0)
     
-    # 2. SMA 21 (MAVİ ÇİZGİ)
+    # 2. SMA 21 (ÖKÜZ)
     df['SMA21'] = ta.sma(df['Close'], length=21)
     
-    # 3. PARABOLIC SAR (STANDART)
-    # Gönderdiğin ayarlar: start=0.02, increment=0.02, max=0.2
+    # 3. PARABOLIC SAR (TAZI)
     psar = df.ta.psar(start=0.02, increment=0.02, max=0.2)
-    
-    # pandas_ta PSAR'ı Long ve Short olarak ayırır, bunları tek sütunda birleştiriyoruz
     psar_cols = [c for c in psar.columns if "PSAR" in c]
     df['SAR'] = psar[psar_cols].bfill(axis=1).iloc[:, 0]
     
-    # 4. ADX ve DI
+    # 4. ADX ve DI (ASLAN)
     df.ta.adx(length=14, append=True)
     try:
-        df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]] # Trend Gücü
-        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]] # DI+
-        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]] # DI-
+        df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]]
+        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]]
+        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]]
     except:
         df['ADX_VAL'] = 0; df['DMP_VAL'] = 0; df['DMN_VAL'] = 0
         
@@ -182,28 +179,27 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
-        # --- YENİ SİNYAL MANTIĞI (STANDART SAR) ---
+        # --- SİNYAL MANTIĞI ---
         
-        # 1. PARABOLIC SAR: Fiyat SAR'ın üstündeyse AL
+        # 1. SAR (TAZI): Fiyat SAR'ın üstündeyse AL
         sar_bull = last['Close'] > last['SAR']
         
-        # 2. ADX/DI: DI+ > DI- ise AL
+        # 2. ADX (ASLAN): DI+ > DI- ise AL
         adx_bull = last['DMP_VAL'] > last['DMN_VAL']
         
-        # 3. ZLSMA: Fiyat ZLSMA üstündeyse AL
+        # 3. ZLSMA (ŞAHİN): Fiyat üstündeyse AL
         zlsma_bull = last['Close'] > last['ZLSMA']
         
-        # SİNYAL KARARI (3'lü Teyit veya Çoğunluk)
+        # SİNYAL KARARI
         bull_signals = [sar_bull, adx_bull, zlsma_bull]
         
         if all(bull_signals): # Hepsi AL ise
-            sig_txt = "GÜÇLÜ AL"
+            sig_txt = "BOĞA GELDİ" # Yeni İsim
             sig_cls = "c-green"
         elif not any(bull_signals): # Hepsi SAT ise
-            sig_txt = "GÜÇLÜ SAT"
+            sig_txt = "AYI GELDİ"  # Yeni İsim
             sig_cls = "c-red"
         else:
-            # Karışık durum
             if sum(bull_signals) >= 2:
                 sig_txt = "AL (ZAYIF)"
                 sig_cls = "c-green"
@@ -220,7 +216,7 @@ with c_center:
         """
         top_placeholder.markdown(top_html, unsafe_allow_html=True)
 
-        # B) İNDİKATÖRLER (KARTLAR)
+        # B) İNDİKATÖRLER (KARTLAR - İSİMLER DEĞİŞTİ)
         def make_card(label, val_str, is_bull):
             if is_bull:
                 icon = "▲"
@@ -242,27 +238,28 @@ with c_center:
         with ind_placeholder:
             st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
             
-            # SATIR 1: ZLSMA ve SMA 21 (Değişmedi)
+            # SATIR 1: ŞAHİN (ZLSMA) ve ÖKÜZ (SMA 21)
             r1c1, r1c2 = st.columns(2)
             with r1c1: 
                 val_txt = f"{last['ZLSMA']:.2f}"
-                st.markdown(make_card("ZLSMA", val_txt, zlsma_bull), unsafe_allow_html=True)
+                st.markdown(make_card("ŞAHİN", val_txt, zlsma_bull), unsafe_allow_html=True)
             with r1c2:
                 sma_bull = last['Close'] > last['SMA21']
                 val_txt = f"{last['SMA21']:.2f}"
-                st.markdown(make_card("SMA 21", val_txt, sma_bull), unsafe_allow_html=True)
+                st.markdown(make_card("ÖKÜZ", val_txt, sma_bull), unsafe_allow_html=True)
             
-            # SATIR 2: SAR (Yeni Standart) ve ADX (Değişmedi)
+            # SATIR 2: TAZI (SAR) ve ASLAN (ADX)
             r2c1, r2c2 = st.columns(2)
             with r2c1: 
                 # SAR Değeri
                 val_txt = f"{last['SAR']:.2f}"
-                # Fiyat SAR'ın üstünde mi altında mı?
                 sar_text = "AL" if sar_bull else "SAT"
-                st.markdown(make_card(f"P. SAR ({sar_text})", val_txt, sar_bull), unsafe_allow_html=True)
+                # İsim: TAZI
+                st.markdown(make_card(f"TAZI ({sar_text})", val_txt, sar_bull), unsafe_allow_html=True)
             with r2c2:
                  val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
-                 st.markdown(make_card("ADX / DI", val_txt, adx_bull), unsafe_allow_html=True)
+                 # İsim: ASLAN
+                 st.markdown(make_card("ASLAN", val_txt, adx_bull), unsafe_allow_html=True)
 
         # C) GRAFİK
         end_date = df.index[-1]
@@ -271,17 +268,18 @@ with c_center:
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZL'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SM'))
         
-        # PARABOLIC SAR ÇİZİMİ (Cross Style)
-        # Pine Script'te style=plot.style_cross vermişsin. Plotly'de 'cross' sembolü kullanıyoruz.
+        # İsimleri Grafikte de Güncelledik
+        fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ŞAHİN'))
+        fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='ÖKÜZ'))
+        
+        # TAZI (SAR) - Cross Style
         fig.add_trace(go.Scatter(
             x=df.index, 
             y=df['SAR'], 
             mode='markers', 
             marker=dict(color='white', size=4, symbol='cross'), 
-            name='SAR'
+            name='TAZI'
         ))
         
         fig.update_layout(
