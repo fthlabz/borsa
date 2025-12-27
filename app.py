@@ -139,26 +139,40 @@ def analyze_stock_data(df):
     # 1. ZLSMA (Ham Fiyat)
     df['ZLSMA'] = ta.linreg(df['Close'], length=50, offset=0)
     
-    # 2. SMA 21 (Bunu geri ekledik)
+    # 2. SMA 21
     df['SMA21'] = ta.sma(df['Close'], length=21)
     
-    # 3. SAR ve SAR DOT
+    # -----------------------------------------------------------
+    # 3. SAR OSCILLATOR (LUXALGO MANTIĞI - RESİMDEKİ SİSTEM)
+    # -----------------------------------------------------------
+    # A) Önce Standart SAR Hesapla
     psar = df.ta.psar(start=0.02, increment=0.02, max=0.2)
     psar_cols = [c for c in psar.columns if "PSAR" in c]
     df['SAR'] = psar[psar_cols].bfill(axis=1).iloc[:, 0]
-    
-    # SAR DOT: Fiyat SAR'ın üstündeyse -100 (Al), Altındaysa +100 (Sat)
-    df['SAR_Dot'] = df.apply(lambda x: -100 if x['Close'] > x['SAR'] else 100, axis=1)
-    
-    # SAR NORMALIZED: Aradaki mesafenin -100/+100 skalası (Çarpan: 2000)
-    df['SAR_Dist'] = (df['Close'] - df['SAR']) / df['Close'] * 2000
-    df['SAR_Norm'] = df['SAR_Dist'].clip(lower=-100, upper=100)
 
-    # 4. NORMALIZED PRICE (Fiyatın osilatör hali -67 gibi değerler için)
+    # B) NORMALIZED PRICE (YEŞİL ÇİZGİ)
+    # Fiyatın Stochastic mantığıyla -100 ile +100 arasına çekilmesi
+    # LuxAlgo'da genellikle 14 periyotluk bir normalizasyon kullanılır.
+    # Formül: (StochK - 50) * 2 -> Bu bize -100 ile +100 aralığını verir.
     stoch = ta.stoch(df['High'], df['Low'], df['Close'], k=14, d=3)
-    df['Price_Norm'] = (stoch['STOCHk_14_3_3'] - 50) * 2
+    df['Norm_Price'] = (stoch['STOCHk_14_3_3'] - 50) * 2
 
-    # 5. ADX ve DI
+    # C) NORMALIZED SAR (KIRMIZI ÇİZGİ)
+    # SAR değerinin son 14 mumdaki High-Low aralığında nerede olduğu.
+    # Bu hesaplama resimdeki "-86" gibi değerleri verir.
+    high14 = df['High'].rolling(14).max()
+    low14 = df['Low'].rolling(14).min()
+    # SAR'ın aralıktaki konumu (0-100 arası)
+    sar_loc = (df['SAR'] - low14) / (high14 - low14) * 100
+    # Bunu -100 ile +100 arasına çekiyoruz
+    df['Norm_SAR'] = (sar_loc - 50) * 2
+
+    # D) SAR DOTS (NOKTALAR)
+    # Mantık: Fiyat SAR'ın üstündeyse (Yükseliş) -> Nokta -100 (Alt Destek)
+    # Fiyat SAR'ın altındaysa (Düşüş) -> Nokta +100 (Üst Direnç)
+    df['SAR_Dot'] = df.apply(lambda x: -100 if x['Close'] > x['SAR'] else 100, axis=1)
+
+    # 4. ADX ve DI
     df.ta.adx(length=14, append=True)
     try:
         df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]]
@@ -190,19 +204,30 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
-        # --- SİNYAL MANTIĞI ---
+        # --- SİNYAL MANTIĞI (RESİMDEKİ OSİLATÖR MANTIĞI) ---
+        
+        # 1. SAR DOT: -100 ise ALICILI/BOĞA Bölgesi
         sar_dot_bull = last['SAR_Dot'] == -100
+        
+        # 2. SAR CROSS: Yeşil Çizgi (Norm Price), Kırmızı Çizgiyi (Norm SAR) yukarı kesti mi?
+        # Veya basitçe: Fiyat Gücü, SAR Gücünden yüksek mi?
+        sar_cross_bull = last['Norm_Price'] > last['Norm_SAR']
+        
+        # 3. ADX Teyidi
         adx_bull = last['DMP_VAL'] > last['DMN_VAL']
+        
+        # 4. ZLSMA Teyidi
         zlsma_bull = last['Close'] > last['ZLSMA']
-        sma_bull = last['Close'] > last['SMA21'] # SMA Kontrolü
         
-        # ÜÇ ANA TEYİT (SAR, ADX, ZL)
-        signals = [sar_dot_bull, adx_bull, zlsma_bull]
+        # ANA SİNYAL: 
+        # LuxAlgo mantığında: Dot -100'deyken (Yeşil nokta), Yeşil çizgi yukarıdaysa güçlüdür.
+        bull_signals = [sar_dot_bull, sar_cross_bull, adx_bull, zlsma_bull]
         
-        if all(signals):
+        # 4 sinyalin en az 3'ü olumluysa GÜÇLÜ AL
+        if sum(bull_signals) >= 3:
             sig_txt = "GÜÇLÜ AL"
             sig_cls = "c-green"
-        elif not any(signals): 
+        elif sum(bull_signals) <= 1: 
             sig_txt = "GÜÇLÜ SAT"
             sig_cls = "c-red"
         else:
@@ -218,7 +243,7 @@ with c_center:
         """
         top_placeholder.markdown(top_html, unsafe_allow_html=True)
 
-        # B) İNDİKATÖRLER (KARTLAR GÜNCELLENDİ - 5 ADET)
+        # B) İNDİKATÖRLER
         def make_card(label, val_str, is_bull):
             if is_bull:
                 icon = "▲"
@@ -240,37 +265,37 @@ with c_center:
         with ind_placeholder:
             st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
             
-            # SATIR 1: ZLSMA ve SMA 21 (Geri geldi!)
+            # SATIR 1: ZLSMA ve SMA 21
             r1c1, r1c2 = st.columns(2)
             with r1c1: 
                 val_txt = f"{last['ZLSMA']:.2f}"
                 st.markdown(make_card("ZLSMA", val_txt, zlsma_bull), unsafe_allow_html=True)
             with r1c2:
+                sma_bull = last['Close'] > last['SMA21']
                 val_txt = f"{last['SMA21']:.2f}"
                 st.markdown(make_card("SMA 21", val_txt, sma_bull), unsafe_allow_html=True)
             
-            # SATIR 2: SAR SİSTEM ve ADX
+            # SATIR 2: SAR OSCILLATOR (RESİMDEKİ DEĞERLER)
+            # Burada Yeşil ve Kırmızı çizgi değerlerini gösteriyoruz
             r2c1, r2c2 = st.columns(2)
             with r2c1: 
-                val_txt = f"Dot:{int(last['SAR_Dot'])} | N:{last['SAR_Norm']:.0f}"
-                st.markdown(make_card("SAR SİSTEM", val_txt, sar_dot_bull), unsafe_allow_html=True)
-            with r2c2: 
-                val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
-                st.markdown(make_card("ADX / DI", val_txt, adx_bull), unsafe_allow_html=True)
+                # Sol Kutu: Norm Price (Yeşil) vs Norm SAR (Kırmızı)
+                # Örn: P:-67 | S:-86
+                val_txt = f"P:{last['Norm_Price']:.0f} | S:{last['Norm_SAR']:.0f}"
+                is_cross_up = last['Norm_Price'] > last['Norm_SAR']
+                st.markdown(make_card("SAR OSC (P/S)", val_txt, is_cross_up), unsafe_allow_html=True)
+            with r2c2:
+                # Sağ Kutu: SAR DOT (-100 veya +100)
+                val_txt = f"DOT: {int(last['SAR_Dot'])}"
+                st.markdown(make_card("SAR DOT", val_txt, sar_dot_bull), unsafe_allow_html=True)
 
-            # SATIR 3: NORM PRICE (Tek başına alt satırda rahat dursun)
-            r3c1, r3c2 = st.columns([1,1]) # Ortalamak için
+            # SATIR 3: ADX / DI
+            r3c1, r3c2 = st.columns(2)
             with r3c1:
-                 # Burayı boş bırakmayıp Norm Price'ı buraya koyuyoruz, 
-                 # ama tasarımı bozmamak için 2 sütun devam edip Price'ı sola alabiliriz
-                 # ya da tek satıra yayabiliriz. Tutarlılık için sol sütuna koyuyorum.
-                 price_bull = last['Price_Norm'] > 0
-                 val_txt = f"Norm P: {last['Price_Norm']:.2f}"
-                 st.markdown(make_card("NORM PRICE", val_txt, price_bull), unsafe_allow_html=True)
+                 val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
+                 st.markdown(make_card("ADX / DI", val_txt, adx_bull), unsafe_allow_html=True)
             with r3c2:
-                # Burası boş kalmasın diye SMA 21 ve ZLSMA farkını koyabiliriz veya boş bırakabiliriz.
-                # Şıklık açısından boş bırakıyorum şimdilik.
-                st.write("") 
+                st.write("") # Boşluk
 
         # C) GRAFİK
         end_date = df.index[-1]
@@ -280,7 +305,8 @@ with c_center:
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
         fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZL'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SM')) # SMA Çizgisi de geri geldi
+        fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SM'))
+        # SAR Noktalarını grafik üzerinde standart yerinde göster (Görsel referans için)
         fig.add_trace(go.Scatter(x=df.index, y=df['SAR'], mode='markers', marker=dict(color='white', size=2), name='SAR'))
         
         fig.update_layout(
