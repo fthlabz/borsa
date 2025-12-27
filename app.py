@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import timedelta
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & CSS (TASARIM AYNEN KORUNDU)
+# 1. AYARLAR & CSS (TASARIM VE STİL AYNEN KORUNDU)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
@@ -134,34 +134,37 @@ def get_smart_data(raw_symbol):
     return None, raw_symbol, "Bulunamadı"
 
 def analyze_stock_data(df):
-    # MultiIndex sütunları düzeltme
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.droplevel(1)
     
-    # 1. ZLSMA
-    df['ZLSMA'] = ta.linreg(df['Close'], length=50, offset=0) # Length kullanıcı isteğine göre ayarlandı
+    # 1. ZLSMA (Senin değerin: 17.63 gibi ham fiyat)
+    df['ZLSMA'] = ta.linreg(df['Close'], length=50, offset=0)
     
-    # 2. SMA (Yan indikatör olarak kalsın)
-    df['SMA21'] = ta.sma(df['Close'], length=21)
-
-    # 3. PARABOLIC SAR (Gelişmiş Normalizasyon)
-    # psar fonksiyonu PSARl ve PSARs döndürür, birleştiriyoruz.
+    # 2. SAR ve SAR DOT HESAPLAMASI
+    # PSAR hesapla
     psar = df.ta.psar(start=0.02, increment=0.02, max=0.2)
-    # Kolon adları dinamik olabilir, 'PSAR' ile başlayanları al
     psar_cols = [c for c in psar.columns if "PSAR" in c]
     df['SAR'] = psar[psar_cols].bfill(axis=1).iloc[:, 0]
     
-    # SAR Normalizasyon Mantığı: -100 ile +100 arası
-    # (Close - SAR) / Close * 1000 formülü
-    df['SAR_Dist'] = (df['Close'] - df['SAR']) / df['Close'] * 1000
+    # SAR DOT: Fiyat SAR'ın üstündeyse -100 (Yeşil), Altındaysa +100 (Kırmızı)
+    # Bu mantık senin "yukarı çıkarsa +100" isteğine göre ayarlandı.
+    df['SAR_Dot'] = df.apply(lambda x: -100 if x['Close'] > x['SAR'] else 100, axis=1)
+    
+    # SAR NORMALIZED: Aradaki mesafenin -100/+100 skalası
+    df['SAR_Dist'] = (df['Close'] - df['SAR']) / df['Close'] * 2000 # Çarpanı artırdık ki -86'yı yakalayalım
     df['SAR_Norm'] = df['SAR_Dist'].clip(lower=-100, upper=100)
 
-    # 4. ADX ve DI (Net Değerler)
+    # 3. NORMALIZED PRICE (Fiyatın osilatör hali -67 gibi değerler için)
+    # Stochastic benzeri bir mantıkla fiyatı -100 ile 100 arasına çekiyoruz
+    stoch = ta.stoch(df['High'], df['Low'], df['Close'], k=14, d=3)
+    # Stoch normalde 0-100'dür. Bunu -100 ile +100'e çeviriyoruz: (Val - 50) * 2
+    df['Price_Norm'] = (stoch['STOCHk_14_3_3'] - 50) * 2
+
+    # 4. ADX ve DI
     df.ta.adx(length=14, append=True)
-    # Kolon isimlerini garantiye alalım (ADX_14, DMP_14, DMN_14 gibi döner)
     try:
         df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]]
-        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]] # DI+
-        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]] # DI-
+        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]]
+        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]]
     except:
         df['ADX_VAL'] = 0; df['DMP_VAL'] = 0; df['DMN_VAL'] = 0
         
@@ -188,45 +191,31 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
-        # --- YENİ MANTIK KONTROLLERİ ---
+        # --- SİNYAL MANTIĞI ---
+        # 1. SAR DOT: -100 ise GÜÇLÜ (AL), +100 ise ZAYIF (SAT)
+        sar_dot_bull = last['SAR_Dot'] == -100
         
-        # 1. ZLSMA Durumu
-        zlsma_bull = last['Close'] > last['ZLSMA']
-        
-        # 2. SMA Durumu (Yan kontrol)
-        sma_bull = last['Close'] > last['SMA21']
-        
-        # 3. SAR Durumu (Normalize değere göre)
-        # Pozitif ise AL, Negatif ise SAT
-        sar_bull = last['SAR_Norm'] > 0
-        
-        # 4. ADX Durumu (DI+ > DI-)
+        # 2. ADX: DI+ > DI- ise GÜÇLÜ
         adx_bull = last['DMP_VAL'] > last['DMN_VAL']
         
-        # GENEL SİNYAL MANTIĞI: ZLSMA, SAR ve ADX aynı yöndeyse GÜÇLÜ
-        # SMA'yı teyit olarak kullanabiliriz ama ana sinyal 3'lü.
-        bull_signals = [zlsma_bull, sar_bull, adx_bull]
+        # 3. ZLSMA: Fiyat ZLSMA üstündeyse GÜÇLÜ
+        zlsma_bull = last['Close'] > last['ZLSMA']
         
-        if all(bull_signals): # 3'ü de True ise
+        # ÜÇÜ BİRDEN GÜÇLÜ OLMALI
+        signals = [sar_dot_bull, adx_bull, zlsma_bull]
+        
+        if all(signals):
             sig_txt = "GÜÇLÜ AL"
             sig_cls = "c-green"
-        elif not any(bull_signals): # 3'ü de False ise
+        elif not any(signals): # Hiçbiri yoksa
             sig_txt = "GÜÇLÜ SAT"
             sig_cls = "c-red"
         else:
             # Karışık durum
-            bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
-            if bull_count >= 3:
-                sig_txt = "AL (ZAYIF)"
-                sig_cls = "c-green"
-            elif bull_count <= 1:
-                sig_txt = "SAT (ZAYIF)"
-                sig_cls = "c-red"
-            else:
-                sig_txt = "NÖTR / BEKLE"
-                sig_cls = "c-gray"
+            sig_txt = "NÖTR / BEKLE"
+            sig_cls = "c-gray"
 
-        # A) FİYAT VE SİNYAL
+        # A) FİYAT VE SİNYAL BAR
         top_html = f"""
         <div class="top-bar-container">
             <div class="price-text">{last['Close']:.2f} ₺</div>
@@ -258,38 +247,41 @@ with c_center:
             st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
             r1c1, r1c2 = st.columns(2)
             
-            # ZLSMA Kartı (Fiyat Değeri)
+            # KART 1: SAR DOT & NORM SAR (İstediğin -100 ve -86'yı burada göreceksin)
             with r1c1: 
-                val_txt = f"{last['ZLSMA']:.2f}"
-                st.markdown(make_card("ZLSMA", val_txt, zlsma_bull), unsafe_allow_html=True)
+                # Dot -100 ve Norm değerini gösteriyoruz
+                val_txt = f"Dot:{int(last['SAR_Dot'])} | N:{last['SAR_Norm']:.0f}"
+                st.markdown(make_card("SAR SİSTEM", val_txt, sar_dot_bull), unsafe_allow_html=True)
             
-            # SMA Kartı (Fiyat Değeri)
+            # KART 2: NORM PRICE (İstediğin -67'yi burada göreceksin)
+            # Fiyat - ZLSMA ilişkisi yerine Norm Price koyduk
             with r1c2: 
-                val_txt = f"{last['SMA21']:.2f}"
-                st.markdown(make_card("SMA 21", val_txt, sma_bull), unsafe_allow_html=True)
+                price_bull = last['Price_Norm'] > 0 # Pozitifse güçlü
+                val_txt = f"Norm P: {last['Price_Norm']:.2f}"
+                st.markdown(make_card("NORM PRICE", val_txt, price_bull), unsafe_allow_html=True)
             
             r2c1, r2c2 = st.columns(2)
             
-            # SAR Kartı (NORM DEĞER: -100 ile +100)
+            # KART 3: ZLSMA (HAM DEĞER: 17.63)
             with r2c1: 
-                val_txt = f"Norm: {last['SAR_Norm']:.2f}"
-                st.markdown(make_card("SAR (NORM)", val_txt, sar_bull), unsafe_allow_html=True)
+                val_txt = f"ZLSMA: {last['ZLSMA']:.2f}"
+                st.markdown(make_card("ZLSMA", val_txt, zlsma_bull), unsafe_allow_html=True)
             
-            # ADX Kartı (D+ ve D- Değerleri Yan Yana)
+            # KART 4: ADX / DI (D+ ve D- yan yana)
             with r2c2: 
                 val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
                 st.markdown(make_card("ADX / DI", val_txt, adx_bull), unsafe_allow_html=True)
 
-        # C) GRAFİK (ÇERÇEVELİ & SON MUM AYARLI)
+        # C) GRAFİK
         end_date = df.index[-1]
         start_date = end_date - timedelta(days=30)
-        
-        # Son mumun görünmesi için sağa boşluk ekliyoruz (Buffer)
-        buffer_date = end_date + timedelta(days=3) # +3 gün ekledik ki sağda boşluk kalsın
+        buffer_date = end_date + timedelta(days=3)
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
         fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZL'))
+        
+        # SAR Noktalarını Görselleştir (Grafikte yerini gör)
         fig.add_trace(go.Scatter(x=df.index, y=df['SAR'], mode='markers', marker=dict(color='white', size=2), name='SAR'))
         
         fig.update_layout(
@@ -299,7 +291,6 @@ with c_center:
             paper_bgcolor='black', 
             plot_bgcolor='black', 
             showlegend=False,
-            # X Ekseninde Bitiş Tarihini (end_date) değil, tamponlu tarihi (buffer_date) kullanıyoruz
             xaxis=dict(range=[start_date, buffer_date], fixedrange=True, visible=False),
             yaxis=dict(fixedrange=True, visible=False),
             dragmode=False
