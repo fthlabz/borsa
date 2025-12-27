@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import timedelta
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & CSS
+# 1. AYARLAR & CSS (TASARIM AYNEN KORUNDU)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
@@ -78,7 +78,7 @@ st.markdown("""
     .ind-status { font-size: 0.8em; font-weight: bold; margin: 2px 0; display: block; }
     .ind-val { font-size: 0.7em; color: #666; font-family: monospace; display: block; }
 
-    /* GRAFİK ÇERÇEVESİ */
+    /* GRAFİK İÇİN ÖZEL ÇERÇEVE */
     div[data-testid="stPlotlyChart"] {
         border: 1px solid #333;
         border-radius: 6px;
@@ -134,20 +134,37 @@ def get_smart_data(raw_symbol):
     return None, raw_symbol, "Bulunamadı"
 
 def analyze_stock_data(df):
+    # MultiIndex sütunları düzeltme
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.droplevel(1)
+    
+    # 1. ZLSMA
+    df['ZLSMA'] = ta.linreg(df['Close'], length=50, offset=0) # Length kullanıcı isteğine göre ayarlandı
+    
+    # 2. SMA (Yan indikatör olarak kalsın)
     df['SMA21'] = ta.sma(df['Close'], length=21)
-    df['ZLSMA'] = ta.linreg(df['Close'], length=32, offset=0)
-    df.ta.psar(af0=0.02, af=0.02, max_af=0.2, append=True)
-    psar_cols = [c for c in df.columns if c.startswith('PSAR')]
-    if psar_cols: df['SAR'] = df[psar_cols].bfill(axis=1).iloc[:, 0]
-    else: df['SAR'] = df['Close']
+
+    # 3. PARABOLIC SAR (Gelişmiş Normalizasyon)
+    # psar fonksiyonu PSARl ve PSARs döndürür, birleştiriyoruz.
+    psar = df.ta.psar(start=0.02, increment=0.02, max=0.2)
+    # Kolon adları dinamik olabilir, 'PSAR' ile başlayanları al
+    psar_cols = [c for c in psar.columns if "PSAR" in c]
+    df['SAR'] = psar[psar_cols].bfill(axis=1).iloc[:, 0]
+    
+    # SAR Normalizasyon Mantığı: -100 ile +100 arası
+    # (Close - SAR) / Close * 1000 formülü
+    df['SAR_Dist'] = (df['Close'] - df['SAR']) / df['Close'] * 1000
+    df['SAR_Norm'] = df['SAR_Dist'].clip(lower=-100, upper=100)
+
+    # 4. ADX ve DI (Net Değerler)
     df.ta.adx(length=14, append=True)
+    # Kolon isimlerini garantiye alalım (ADX_14, DMP_14, DMN_14 gibi döner)
     try:
         df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]]
-        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]]
-        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]]
+        df['DMP_VAL'] = df[df.columns[df.columns.str.startswith('DMP_')][0]] # DI+
+        df['DMN_VAL'] = df[df.columns[df.columns.str.startswith('DMN_')][0]] # DI-
     except:
         df['ADX_VAL'] = 0; df['DMP_VAL'] = 0; df['DMN_VAL'] = 0
+        
     return df
 
 # -----------------------------------------------------------------------------
@@ -171,40 +188,55 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
-        # PARA BİRİMİ ALGISI
-        # Eğer ".IS" içeriyorsa TL, yoksa Dolar varsayalım
-        currency_icon = "₺" if ".IS" in active_symbol else "$"
+        # --- YENİ MANTIK KONTROLLERİ ---
         
-        # MANTIK
+        # 1. ZLSMA Durumu
         zlsma_bull = last['Close'] > last['ZLSMA']
+        
+        # 2. SMA Durumu (Yan kontrol)
         sma_bull = last['Close'] > last['SMA21']
-        sar_bull = last['Close'] > last['SAR']
+        
+        # 3. SAR Durumu (Normalize değere göre)
+        # Pozitif ise AL, Negatif ise SAT
+        sar_bull = last['SAR_Norm'] > 0
+        
+        # 4. ADX Durumu (DI+ > DI-)
         adx_bull = last['DMP_VAL'] > last['DMN_VAL']
         
-        bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
-        bear_count = 4 - bull_count
+        # GENEL SİNYAL MANTIĞI: ZLSMA, SAR ve ADX aynı yöndeyse GÜÇLÜ
+        # SMA'yı teyit olarak kullanabiliriz ama ana sinyal 3'lü.
+        bull_signals = [zlsma_bull, sar_bull, adx_bull]
         
-        if bull_count >= 3:
+        if all(bull_signals): # 3'ü de True ise
             sig_txt = "GÜÇLÜ AL"
             sig_cls = "c-green"
-        elif bear_count >= 3:
+        elif not any(bull_signals): # 3'ü de False ise
             sig_txt = "GÜÇLÜ SAT"
             sig_cls = "c-red"
         else:
-            sig_txt = "NÖTR"
-            sig_cls = "c-gray"
+            # Karışık durum
+            bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
+            if bull_count >= 3:
+                sig_txt = "AL (ZAYIF)"
+                sig_cls = "c-green"
+            elif bull_count <= 1:
+                sig_txt = "SAT (ZAYIF)"
+                sig_cls = "c-red"
+            else:
+                sig_txt = "NÖTR / BEKLE"
+                sig_cls = "c-gray"
 
-        # A) FİYAT VE SİNYAL (Dinamik Para Birimi)
+        # A) FİYAT VE SİNYAL
         top_html = f"""
         <div class="top-bar-container">
-            <div class="price-text">{last['Close']:.2f} {currency_icon}</div>
+            <div class="price-text">{last['Close']:.2f} ₺</div>
             <div class="signal-text {sig_cls}">{sig_txt}</div>
         </div>
         """
         top_placeholder.markdown(top_html, unsafe_allow_html=True)
 
-        # B) İNDİKATÖRLER
-        def make_card(label, val, is_bull):
+        # B) İNDİKATÖRLER (KARTLAR GÜNCELLENDİ)
+        def make_card(label, val_str, is_bull):
             if is_bull:
                 icon = "▲"
                 st_text = "GÜÇLÜ"
@@ -218,28 +250,47 @@ with c_center:
             <div class="ind-card">
                 <span class="ind-title">{label}</span>
                 <span class="ind-status {cls}">{icon} {st_text}</span>
-                <span class="ind-val">{val:.2f}</span>
+                <span class="ind-val">{val_str}</span>
             </div>
             """
 
         with ind_placeholder:
             st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
             r1c1, r1c2 = st.columns(2)
-            with r1c1: st.markdown(make_card("ZL", last['ZLSMA'], zlsma_bull), unsafe_allow_html=True)
-            with r1c2: st.markdown(make_card("SM", last['SMA21'], sma_bull), unsafe_allow_html=True)
+            
+            # ZLSMA Kartı (Fiyat Değeri)
+            with r1c1: 
+                val_txt = f"{last['ZLSMA']:.2f}"
+                st.markdown(make_card("ZLSMA", val_txt, zlsma_bull), unsafe_allow_html=True)
+            
+            # SMA Kartı (Fiyat Değeri)
+            with r1c2: 
+                val_txt = f"{last['SMA21']:.2f}"
+                st.markdown(make_card("SMA 21", val_txt, sma_bull), unsafe_allow_html=True)
+            
             r2c1, r2c2 = st.columns(2)
-            with r2c1: st.markdown(make_card("SA", last['SAR'], sar_bull), unsafe_allow_html=True)
-            with r2c2: st.markdown(make_card("AD", last['ADX_VAL'], adx_bull), unsafe_allow_html=True)
+            
+            # SAR Kartı (NORM DEĞER: -100 ile +100)
+            with r2c1: 
+                val_txt = f"Norm: {last['SAR_Norm']:.2f}"
+                st.markdown(make_card("SAR (NORM)", val_txt, sar_bull), unsafe_allow_html=True)
+            
+            # ADX Kartı (D+ ve D- Değerleri Yan Yana)
+            with r2c2: 
+                val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
+                st.markdown(make_card("ADX / DI", val_txt, adx_bull), unsafe_allow_html=True)
 
-        # C) GRAFİK
+        # C) GRAFİK (ÇERÇEVELİ & SON MUM AYARLI)
         end_date = df.index[-1]
         start_date = end_date - timedelta(days=30)
-        buffer_date = end_date + timedelta(days=3)
+        
+        # Son mumun görünmesi için sağa boşluk ekliyoruz (Buffer)
+        buffer_date = end_date + timedelta(days=3) # +3 gün ekledik ki sağda boşluk kalsın
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
         fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZL'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SM'))
+        fig.add_trace(go.Scatter(x=df.index, y=df['SAR'], mode='markers', marker=dict(color='white', size=2), name='SAR'))
         
         fig.update_layout(
             margin=dict(l=0, r=0, t=10, b=0),
@@ -248,6 +299,7 @@ with c_center:
             paper_bgcolor='black', 
             plot_bgcolor='black', 
             showlegend=False,
+            # X Ekseninde Bitiş Tarihini (end_date) değil, tamponlu tarihi (buffer_date) kullanıyoruz
             xaxis=dict(range=[start_date, buffer_date], fixedrange=True, visible=False),
             yaxis=dict(fixedrange=True, visible=False),
             dragmode=False
