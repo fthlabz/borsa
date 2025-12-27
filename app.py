@@ -179,35 +179,46 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
-        # --- PARA BİRİMİ SİMGESİ AYARI (YENİ EKLENDİ) ---
+        # --- PARA BİRİMİ SİMGESİ ---
         if ".IS" in active_symbol:
             currency_sym = "₺"
         else:
             currency_sym = "$"
 
-        # --- SİNYAL MANTIĞI ---
+        # --- SİNYAL MANTIĞI (YENİ GÜNCELLEME) ---
         
         # 1. SAR (TAZI)
         sar_bull = last['Close'] > last['SAR']
         
-        # 2. ADX (ASLAN)
+        # 2. ADX (ASLAN) -> PATRON
         adx_bull = last['DMP_VAL'] > last['DMN_VAL']
         
         # 3. ZLSMA (ŞAHİN)
         zlsma_bull = last['Close'] > last['ZLSMA']
         
-        # SİNYAL KARARI
-        bull_signals = [sar_bull, adx_bull, zlsma_bull]
-        bull_score = sum(bull_signals)
+        # 4. SMA (ÖKÜZ) - Sinyal hesabına dahil ediyoruz
+        sma_bull = last['Close'] > last['SMA21']
         
-        if bull_score >= 2:
+        # Yan İndikatörler Grubu: Tazı, Öküz, Şahin
+        others_bull_list = [sar_bull, sma_bull, zlsma_bull]
+        others_score = sum(others_bull_list) # 0, 1, 2 veya 3
+        
+        # KARAR MEKANİZMASI: ASLAN + (DİĞERLERİNDEN EN AZ 2)
+        
+        if adx_bull and others_score >= 2:
+            # Aslan AL diyor + Diğerlerinden en az 2'si AL diyor
             sig_txt = "BOĞA GELDİ"
             sig_cls = "c-green"
-        else:
+        elif not adx_bull and others_score <= 1:
+            # Aslan SAT diyor (not adx_bull) + Diğerlerinden en az 2'si SAT diyor (others_score <= 1)
             sig_txt = "AYI GELDİ"
             sig_cls = "c-red"
+        else:
+            # Aslan ile diğerleri uyuşmuyor (NÖTR)
+            sig_txt = "NÖTR / BEKLE"
+            sig_cls = "c-gray"
 
-        # A) FİYAT VE SİNYAL (Dinamik Simge Kullanıldı)
+        # A) FİYAT VE SİNYAL
         top_html = f"""
         <div class="top-bar-container">
             <div class="price-text">{last['Close']:.2f} {currency_sym}</div>
