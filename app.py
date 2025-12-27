@@ -179,6 +179,12 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
+        # --- PARA BİRİMİ SİMGESİ AYARI (YENİ EKLENDİ) ---
+        if ".IS" in active_symbol:
+            currency_sym = "₺"
+        else:
+            currency_sym = "$"
+
         # --- SİNYAL MANTIĞI ---
         
         # 1. SAR (TAZI)
@@ -190,13 +196,9 @@ with c_center:
         # 3. ZLSMA (ŞAHİN)
         zlsma_bull = last['Close'] > last['ZLSMA']
         
-        # SİNYAL KARARI (ÇOĞUNLUK OYU)
+        # SİNYAL KARARI
         bull_signals = [sar_bull, adx_bull, zlsma_bull]
-        bull_score = sum(bull_signals) # 0, 1, 2 veya 3
-        
-        # DÜZELTME: "ZAYIF" kelimesini kaldırdık.
-        # Çoğunluk AL yönündeyse -> BOĞA GELDİ
-        # Çoğunluk SAT yönündeyse -> AYI GELDİ
+        bull_score = sum(bull_signals)
         
         if bull_score >= 2:
             sig_txt = "BOĞA GELDİ"
@@ -205,10 +207,10 @@ with c_center:
             sig_txt = "AYI GELDİ"
             sig_cls = "c-red"
 
-        # A) FİYAT VE SİNYAL
+        # A) FİYAT VE SİNYAL (Dinamik Simge Kullanıldı)
         top_html = f"""
         <div class="top-bar-container">
-            <div class="price-text">{last['Close']:.2f} ₺</div>
+            <div class="price-text">{last['Close']:.2f} {currency_sym}</div>
             <div class="signal-text {sig_cls}">{sig_txt}</div>
         </div>
         """
@@ -249,9 +251,7 @@ with c_center:
             # SATIR 2
             r2c1, r2c2 = st.columns(2)
             with r2c1: 
-                # SAR Değeri
                 val_txt = f"{last['SAR']:.2f}"
-                # İsim: SADECE TAZI (Yanındaki parantez kalktı)
                 st.markdown(make_card("TAZI", val_txt, sar_bull), unsafe_allow_html=True)
             with r2c2:
                  val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
