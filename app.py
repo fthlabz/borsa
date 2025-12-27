@@ -5,7 +5,7 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & TASARIM (FTHLABZ GHOST MODE)
+# 1. AYARLAR & TASARIM (FTHLABZ GHOST MODE - V7)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
@@ -15,38 +15,28 @@ st.markdown("""
     .stApp { background-color: #000000; color: #FFD700; }
     
     /* ------------------------------------------------------- */
-    /* 🛑 GİZLEME BÖLÜMÜ (TÜM REKLAMLARI VE ÇUBUKLARI SİL) 🛑 */
+    /* 🛑 GİZLEME BÖLÜMÜ (NÜKLEER MÜDAHALE) 🛑 */
     /* ------------------------------------------------------- */
     
-    /* 1. En tepedeki Streamlit çubuğunu yok et */
-    header[data-testid="stHeader"] {
-        visibility: hidden !important;
-        display: none !important;
-    }
+    /* 1. Standart Header ve Footer'ları yok et */
+    header, footer {visibility: hidden !important; display: none !important; height: 0px !important;}
+    header[data-testid="stHeader"] {display: none !important;}
     
-    /* 2. En alttaki "Built with Streamlit" footer'ını yok et */
-    footer {
-        visibility: hidden !important;
-        display: none !important;
-        height: 0px !important;
-    }
+    /* 2. Toolbar ve Menüleri yok et */
+    [data-testid="stToolbar"] {display: none !important;}
+    .stDeployButton {display: none !important;}
+    #MainMenu {visibility: hidden !important;}
     
-    /* 3. "Fullscreen" butonunun olduğu toolbar'ı yok et */
-    [data-testid="stToolbar"] {
-        visibility: hidden !important;
-        display: none !important;
-    }
+    /* 3. JOKER MÜDAHALE: Alt kısımdaki o inatçı "Built with..." yazısını yakala */
+    /* İsminin içinde 'viewerBadge' geçen her şeyi siler */
+    div[class*="viewerBadge"] {display: none !important;}
     
-    /* 4. Sağ üstteki hamburger menüyü ve deploy butonunu yok et */
-    .stDeployButton {display:none;}
-    #MainMenu {visibility: hidden;}
-    
-    /* 5. Gömülü moddaki (Embed) alt çubuğu zorla sil */
-    .viewerBadge_container__1QSob {display: none !important;}
+    /* 4. Fullscreen butonunu hedef al ve yok et */
+    button[title="View fullscreen"] {display: none !important;}
     
     /* ------------------------------------------------------- */
 
-    /* Input Alanı (Ortalı ve Şık) */
+    /* Input Alanı */
     .stTextInput > div > div > input { 
         color: #FFD700; 
         background-color: #111111; 
@@ -56,10 +46,10 @@ st.markdown("""
         border-radius: 10px;
     }
     
-    /* Metinler ve Başlıklar */
+    /* Metinler */
     h1, h2, h3, p, span, label, div { color: #FFD700 !important; font-family: 'Helvetica', sans-serif; }
     
-    /* Metrik Kutuları (Kart Görünümü) */
+    /* Kartlar */
     div[data-testid="metric-container"] { 
         background-color: #111111; 
         border: 1px solid #333; 
@@ -69,7 +59,7 @@ st.markdown("""
         padding: 5px;
     }
     
-    /* Yasal Uyarı Kutusu (En Altta) */
+    /* Footer Box */
     .footer-box { 
         background-color: #1a0000; 
         border-top: 2px solid #FF0000; 
@@ -83,7 +73,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. BAŞLIK (DERLİ TOPLU LOGO)
+# 2. BAŞLIK
 # -----------------------------------------------------------------------------
 st.markdown("""
 <div style='text-align: center; padding-bottom: 20px; margin-top: -50px;'>
@@ -93,7 +83,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 3. HESAPLAMA MOTORU (3'lü ONAY SİSTEMİ)
+# 3. HESAPLAMA MOTORU
 # -----------------------------------------------------------------------------
 def analyze_stock(symbol):
     try:
@@ -101,20 +91,14 @@ def analyze_stock(symbol):
         if df is None or len(df) < 50: return None, "Veri yetersiz."
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.droplevel(1)
 
-        # --- İNDİKATÖRLER ---
-        # 1. SMA 21
+        # İndikatörler
         df['SMA21'] = ta.sma(df['Close'], length=21)
-        
-        # 2. ZLSMA 32
         df['ZLSMA'] = ta.linreg(df['Close'], length=32, offset=0)
-        
-        # 3. SAR
         df.ta.psar(af0=0.02, af=0.02, max_af=0.2, append=True)
         psar_cols = [c for c in df.columns if c.startswith('PSAR')]
         if psar_cols: df['SAR'] = df[psar_cols].bfill(axis=1).iloc[:, 0]
         else: df['SAR'] = df['Close']
 
-        # 4. ADX (Güç için)
         df.ta.adx(length=14, append=True)
         try:
             df['ADX_VAL'] = df[df.columns[df.columns.str.startswith('ADX_')][0]]
@@ -127,11 +111,11 @@ def analyze_stock(symbol):
     except Exception as e: return None, str(e)
 
 # -----------------------------------------------------------------------------
-# 4. ARAYÜZ VE SİNYAL MANTIĞI
+# 4. ARAYÜZ
 # -----------------------------------------------------------------------------
 col_in1, col_in2, col_in3 = st.columns([1, 2, 1])
 with col_in2:
-    ticker = st.text_input("", value="THYAO.IS", placeholder="Hisse Kodu (Örn: GARAN.IS)").upper()
+    ticker = st.text_input("", value="THYAO.IS", placeholder="Hisse Kodu").upper()
 
 df, error = analyze_stock(ticker)
 
@@ -141,86 +125,55 @@ elif df is not None:
     last = df.iloc[-1]
     prev = df.iloc[-2]
     
-    # --- MANTIK ---
+    # Logic
     zlsma_bull = last['Close'] > last['ZLSMA']
     sma_bull = last['Close'] > last['SMA21']
     sar_bull = last['Close'] > last['SAR']
     adx_bull = last['DMP_VAL'] > last['DMN_VAL']
     
-    # --- PUANLAMA ---
     bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
     bear_count = 4 - bull_count
     
     signal_text = "NÖTR / BEKLE"
-    
-    if bull_count >= 3:
-        signal_text = "🚀 AL" if bull_count == 3 else "🚀 GÜÇLÜ AL"
-    elif bear_count >= 3:
-        signal_text = "🔻 SAT" if bear_count == 3 else "🩸 GÜÇLÜ SAT"
+    if bull_count >= 3: signal_text = "🚀 AL" if bull_count == 3 else "🚀 GÜÇLÜ AL"
+    elif bear_count >= 3: signal_text = "🔻 SAT" if bear_count == 3 else "🩸 GÜÇLÜ SAT"
 
-    # --- METRİKLER (Mobil Düzen) ---
-    
-    # SATIR 1
-    m_row1_col1, m_row1_col2 = st.columns(2)
-    with m_row1_col1:
-        fiyat_degisim = last['Close'] - prev['Close']
-        st.metric("FİYAT", f"{last['Close']:.2f}", f"{fiyat_degisim:.2f}")
-    with m_row1_col2:
+    # Metrikler
+    m1, m2 = st.columns(2)
+    with m1:
+        st.metric("FİYAT", f"{last['Close']:.2f}", f"{(last['Close'] - prev['Close']):.2f}")
+    with m2:
         delta_color = "normal" if bull_count >=3 else "inverse" if bear_count >=3 else "off"
         st.metric("SİNYAL", signal_text, f"Güç: {int((max(bull_count, bear_count)/4)*100)}%", delta_color=delta_color)
 
     st.write("") 
 
-    # SATIR 2
-    m_row2_col1, m_row2_col2 = st.columns(2)
-    with m_row2_col1:
-        z_icon = "🟢 YUKARI" if zlsma_bull else "🔴 AŞAĞI"
-        st.metric("ZLSMA (Yön)", z_icon, f"{last['ZLSMA']:.2f}", delta_color="off")
-    with m_row2_col2:
-        s_icon = "🟢 YUKARI" if sma_bull else "🔴 AŞAĞI"
-        st.metric("SMA 21 (Yön)", s_icon, f"{last['SMA21']:.2f}", delta_color="off")
+    m3, m4 = st.columns(2)
+    with m3:
+        st.metric("ZLSMA", "🟢 YUKARI" if zlsma_bull else "🔴 AŞAĞI", f"{last['ZLSMA']:.2f}", delta_color="off")
+    with m4:
+        st.metric("SMA 21", "🟢 YUKARI" if sma_bull else "🔴 AŞAĞI", f"{last['SMA21']:.2f}", delta_color="off")
 
     st.write("") 
 
-    # SATIR 3
-    m_row3_col1, m_row3_col2 = st.columns(2)
-    with m_row3_col1:
-        sar_durum = "🟢 ALICILI" if sar_bull else "🔴 SATICILI"
-        st.metric("SAR (Baskı)", sar_durum, f"{last['SAR']:.2f}", delta_color="off")
-    with m_row3_col2:
-        adx_durum = "🟢 BOĞA" if adx_bull else "🔴 AYI"
-        st.metric("ADX (Trend)", adx_durum, f"{last['ADX_VAL']:.1f}", delta_color="off")
+    m5, m6 = st.columns(2)
+    with m5:
+        st.metric("SAR", "🟢 ALICILI" if sar_bull else "🔴 SATICILI", f"{last['SAR']:.2f}", delta_color="off")
+    with m6:
+        st.metric("ADX", "🟢 BOĞA" if adx_bull else "🔴 AYI", f"{last['ADX_VAL']:.1f}", delta_color="off")
 
-    # --- GRAFİK ---
+    # Grafik
     st.markdown("---")
     fig = go.Figure()
-    
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
     fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZLSMA'))
     fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SMA 21'))
     fig.add_trace(go.Scatter(x=df.index, y=df['SAR'], mode='markers', marker=dict(color='white', size=2), name='SAR'))
-
-    fig.update_layout(
-        margin=dict(l=10, r=10, t=30, b=10),
-        template="plotly_dark", 
-        height=400, 
-        paper_bgcolor='black', 
-        plot_bgcolor='black', 
-        font=dict(color='#FFD700'),
-        legend=dict(orientation="h", y=1.1, x=0)
-    )
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), template="plotly_dark", height=400, paper_bgcolor='black', plot_bgcolor='black', font=dict(color='#FFD700'), legend=dict(orientation="h", y=1.1, x=0))
     st.plotly_chart(fig, use_container_width=True)
 
 else:
     st.warning("Veriler yükleniyor...")
 
-# -----------------------------------------------------------------------------
-# 5. FOOTER
-# -----------------------------------------------------------------------------
-st.markdown("""
-<div class="footer-box">
-    ⚠️ <b>YASAL UYARI</b><br>
-    Burada yer alan bilgi, yorum ve tavsiyeler <b>YATIRIM DANIŞMANLIĞI KAPSAMINDA DEĞİLDİR.</b><br>
-    FTHLABZ TECHNOLOGY © 2025
-</div>
-""", unsafe_allow_html=True)
+# Footer
+st.markdown("""<div class="footer-box">⚠️ <b>YASAL UYARI:</b> Yatırım tavsiyesi değildir.<br>FTHLABZ TECHNOLOGY © 2025</div>""", unsafe_allow_html=True)
