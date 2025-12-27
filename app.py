@@ -6,64 +6,84 @@ import plotly.graph_objects as go
 from datetime import timedelta
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & TASARIM (GİZLİ & KAMUFLAJ MODU)
+# 1. AYARLAR & CSS (MİLYMETRİK TASARIM)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
 st.markdown("""
 <style>
-    /* Ana Tema: Siyah & Gold */
+    /* Ana Tema */
     .stApp { background-color: #000000; color: #FFD700; }
     
-    /* ------------------------------------------------------- */
-    /* 🛑 GİZLEME BÖLÜMÜ 🛑 */
-    /* ------------------------------------------------------- */
-    header, footer {visibility: hidden !important; display: none !important; height: 0px !important;}
-    header[data-testid="stHeader"] {display: none !important;}
+    /* GİZLEME BÖLÜMÜ (Header, Footer, Toolbar Yok) */
+    header, footer {display: none !important;}
     [data-testid="stToolbar"] {display: none !important;}
     .stDeployButton {display: none !important;}
-    #MainMenu {visibility: hidden !important;}
     div[class*="viewerBadge"] {display: none !important;}
-    button[title="View fullscreen"] {display: none !important;}
-    /* ------------------------------------------------------- */
-
-    /* Input Alanı (Ortalı) */
+    
+    /* INPUT ALANI (SARI ÇİZGİLİ & ORTALI) */
     .stTextInput > div > div > input { 
-        color: #FFD700; 
-        background-color: #111111; 
-        border: 1px solid #FFD700; 
+        color: #FFD700 !important; 
+        background-color: #000000 !important; 
+        border: 2px solid #FFD700 !important; /* İstenilen Sarı Çizgi */
         text-align: center; 
         font-weight: bold;
-        border-radius: 10px;
-        margin-top: -15px; /* Metriklerle arasını kapatmak için */
+        border-radius: 8px;
+        font-size: 1.2em;
+    }
+
+    /* MİNYON METRİKLER İÇİN ÖZEL CSS SINIFLARI */
+    .info-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding-bottom: 2px;
+        font-family: 'Helvetica', sans-serif;
     }
     
-    h1, h2, h3, p, span, label, div { color: #FFD700 !important; font-family: 'Helvetica', sans-serif; }
-    
-    /* Metrik Kutuları (Daha kompakt) */
-    div[data-testid="metric-container"] { 
-        background-color: #000000; 
-        border: 0px solid #333; 
-        color: #FFD700; 
-        text-align: center;
-        padding: 0px;
+    .price-tag {
+        font-size: 1.1em;
+        font-weight: bold;
+        color: #FFFFFF;
     }
+    
+    .signal-tag {
+        font-size: 1.0em;
+        font-weight: bold;
+        text-align: right;
+    }
+    
+    .indicator-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr; /* İki sütun */
+        gap: 5px;
+        margin-top: 5px;
+        font-family: 'Helvetica', sans-serif;
+        font-size: 0.9em;
+    }
+    
+    .ind-box-left { text-align: left; color: #CCC; }
+    .ind-box-right { text-align: right; color: #CCC; }
+
+    /* Renkler */
+    .txt-green { color: #00FF00; }
+    .txt-red { color: #FF0000; }
     
     /* Yasal Uyarı */
     .footer-box { 
         background-color: #1a0000; 
-        border-top: 2px solid #FF0000; 
-        padding: 20px; 
+        border-top: 1px solid #FF0000; 
+        padding: 15px; 
         text-align: center; 
-        font-size: 0.75em; 
-        color: #aa4444 !important; 
-        margin-top: 50px;
+        font-size: 0.7em; 
+        color: #aa4444; 
+        margin-top: 30px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. BAŞLIK
+# 2. ŞİRKET LOGOSU
 # -----------------------------------------------------------------------------
 st.markdown("""
 <div style='text-align: center; padding-bottom: 10px; margin-top: -60px;'>
@@ -72,7 +92,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 3. AKILLI VERİ MOTORU
+# 3. VERİ MOTORU
 # -----------------------------------------------------------------------------
 def get_smart_data(raw_symbol):
     raw_symbol = raw_symbol.strip().upper()
@@ -100,9 +120,6 @@ def get_smart_data(raw_symbol):
 
     return None, raw_symbol, "Bulunamadı"
 
-# -----------------------------------------------------------------------------
-# 4. TEKNİK ANALİZ
-# -----------------------------------------------------------------------------
 def analyze_stock_data(df):
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.droplevel(1)
     df['SMA21'] = ta.sma(df['Close'], length=21)
@@ -121,134 +138,111 @@ def analyze_stock_data(df):
     return df
 
 # -----------------------------------------------------------------------------
-# 5. ARAYÜZ MANTIĞI (ÖNCE HESAPLA SONRA GÖSTER)
+# 4. ARAYÜZ (COMPACT DESIGN)
 # -----------------------------------------------------------------------------
 
-# Streamlit akışı yukarıdan aşağı olduğu için, önce input'u "Session State" ile almamız lazım
-# ki veriyi yukarıya (inputun üstüne) yazabilelim. Ancak basit olması için
-# "Container" yapısı kullanacağız.
+# Ekranı daraltıyoruz ki her şey ortada toplansın (Mobil görünüm için kritik)
+c_left, c_center, c_right = st.columns([1, 2, 1])
 
-# 1. Önce Veriyi Çekelim (Varsayılan THYAO)
-if 'symbol' not in st.session_state:
-    st.session_state.symbol = "THYAO"
-
-# Arayüz Düzeni: 3 Konteyner
-top_metrics = st.container() # Fiyat ve Sinyal Buraya
-input_area = st.container()  # Arama Kutusu Buraya
-indicators = st.container()  # İndikatörler Buraya
-charts = st.container()      # Grafik Buraya
-
-# --- INPUT ALANI (ORTA) ---
-with input_area:
-    col_dummy1, col_inp, col_dummy2 = st.columns([1, 2, 1])
-    with col_inp:
-        # Kullanıcı buraya yazınca sayfa yenilenir
-        user_input = st.text_input("", value="THYAO", placeholder="Hisse/Coin").upper()
-
-# Veriyi İşle
-df, active_symbol, error = get_smart_data(user_input)
-
-if error:
-    with top_metrics:
-        st.error("Bulunamadı")
-elif df is not None:
-    df = analyze_stock_data(df)
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
+with c_center:
+    # Kullanıcı Input'u (Session State yerine doğrudan widget kullanıyoruz, daha hızlı tepki için)
+    # Önce varsayılan değer
+    if 'symbol' not in st.session_state: st.session_state.symbol = "THYAO"
     
-    # --- MANTIK ---
-    zlsma_bull = last['Close'] > last['ZLSMA']
-    sma_bull = last['Close'] > last['SMA21']
-    sar_bull = last['Close'] > last['SAR']
-    adx_bull = last['DMP_VAL'] > last['DMN_VAL']
+    # --- 1. HESAPLAMA (Input'tan önce yapıyoruz ki veriyi Input'un üstüne yazabilelim) ---
+    # Streamlit'te input widget'ı en başta tanımlanmalı, ama biz veriyi üstüne yazacağız.
+    # Bu yüzden önce "Placeholder" (Yer tutucu) koyuyoruz.
     
-    bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
-    bear_count = 4 - bull_count
+    top_info_placeholder = st.empty() # Fiyat ve Sinyal buraya gelecek
     
-    # Ana Sinyal Metni
-    main_val, main_col = "BEKLE", "off"
-    if bull_count >= 3:
-        main_val = "🟢 GÜÇLÜ"
-        main_col = "normal"
-    elif bear_count >= 3:
-        main_val = "🔴 ZAYIF"
-        main_col = "inverse"
-
-    # İndikatör Metni (ÜÇGENLER)
-    def get_tri_icon(is_bull):
-        if is_bull: return "▲", "normal" # Yeşil Üçgen
-        else: return "▼", "inverse"      # Kırmızı Ters Üçgen
-
-    # --- 1. ÜST KATMAN (FİYAT VE SİNYAL) ---
-    with top_metrics:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("FİYAT", f"{last['Close']:.2f}", f"{(last['Close'] - prev['Close']):.2f}")
-        with c2:
-            st.metric("SİNYAL", main_val, f"Güç: %{int((max(bull_count, bear_count)/4)*100)}", delta_color=main_col)
+    user_input = st.text_input("", value="THYAO", placeholder="Hisse Gir").upper()
     
-    # --- 2. INPUT ALTI BİLGİ ---
-    with input_area:
-         st.markdown(f"<div style='text-align:center; color:#666; font-size:0.8em; margin-bottom:5px;'>Analiz Edilen: <b>{active_symbol}</b></div>", unsafe_allow_html=True)
+    bottom_info_placeholder = st.empty() # İndikatörler buraya gelecek
+    chart_placeholder = st.empty()       # Grafik buraya gelecek
 
-    # --- 3. İNDİKATÖRLER (ZL, SM, SA, AD) ---
-    with indicators:
-        # Satır 1: ZL ve SM
-        i1, i2 = st.columns(2)
-        with i1:
-            ico, col = get_tri_icon(zlsma_bull)
-            st.metric("ZL", ico, f"{last['ZLSMA']:.2f}", delta_color=col)
-        with i2:
-            ico, col = get_tri_icon(sma_bull)
-            st.metric("SM", ico, f"{last['SMA21']:.2f}", delta_color=col)
+    # Hesaplama Başlasın
+    df, active_symbol, error = get_smart_data(user_input)
+
+    if error:
+        top_info_placeholder.error("Bulunamadı")
+    elif df is not None:
+        df = analyze_stock_data(df)
+        last = df.iloc[-1]
         
-        # Satır 2: SA ve AD
-        i3, i4 = st.columns(2)
-        with i3:
-            ico, col = get_tri_icon(sar_bull)
-            st.metric("SA", ico, f"{last['SAR']:.2f}", delta_color=col)
-        with i4:
-            ico, col = get_tri_icon(adx_bull)
-            st.metric("AD", ico, f"{last['ADX_VAL']:.1f}", delta_color=col)
-
-    # --- 4. GRAFİK (SABİT 1 AYLIK) ---
-    with charts:
-        st.write("")
-        st.write("")
-        fig = go.Figure()
+        # --- MANTIK ---
+        zlsma_bull = last['Close'] > last['ZLSMA']
+        sma_bull = last['Close'] > last['SMA21']
+        sar_bull = last['Close'] > last['SAR']
+        adx_bull = last['DMP_VAL'] > last['DMN_VAL']
         
-        # Tarih Aralığı Hesapla (Son 30 Gün)
+        bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
+        bear_count = 4 - bull_count
+        
+        # --- HTML GÖRSELLEŞTİRME ---
+        
+        # 1. SİNYAL METNİ VE RENGİ
+        if bull_count >= 3:
+            sig_txt = "GÜÇLÜ AL"
+            sig_class = "txt-green"
+        elif bear_count >= 3:
+            sig_txt = "GÜÇLÜ SAT"
+            sig_class = "txt-red"
+        else:
+            sig_txt = "NÖTR"
+            sig_class = ""
+
+        # 2. OKLAR VE RENKLER (ZL, SM, SA, AD)
+        def get_arrow_html(is_bull):
+            if is_bull: return "<span class='txt-green'>⬆</span>"
+            else: return "<span class='txt-red'>⬇</span>"
+
+        zl_arrow = get_arrow_html(zlsma_bull)
+        sm_arrow = get_arrow_html(sma_bull)
+        sa_arrow = get_arrow_html(sar_bull)
+        ad_arrow = get_arrow_html(adx_bull)
+
+        # --- YERLEŞTİRME ---
+
+        # A) FİYAT VE ANA SİNYAL (Input'un Üstü)
+        top_info_placeholder.markdown(f"""
+        <div class="info-container">
+            <div class="price-tag">{last['Close']:.2f}</div>
+            <div class="signal-tag {sig_class}">{sig_txt}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # B) İNDİKATÖRLER (Input'un Altı)
+        bottom_info_placeholder.markdown(f"""
+        <div style='text-align:center; color:#555; font-size:0.7em; margin-top:2px;'>{active_symbol}</div>
+        <div class="indicator-grid">
+            <div class="ind-box-left">ZL {zl_arrow}</div>
+            <div class="ind-box-right">SM {sm_arrow}</div>
+            <div class="ind-box-left">SA {sa_arrow}</div>
+            <div class="ind-box-right">AD {ad_arrow}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # C) GRAFİK (Sabit 1 Aylık)
         end_date = df.index[-1]
         start_date = end_date - timedelta(days=30)
         
+        fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
         fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ZL'))
         fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='SM'))
         
-        # Grafik Ayarları (SABİT, ZOOM YOK, PAN YOK)
         fig.update_layout(
-            margin=dict(l=10, r=10, t=10, b=10),
+            margin=dict(l=5, r=5, t=10, b=10),
             template="plotly_dark", 
-            height=350, 
+            height=300, # Daha minyon grafik
             paper_bgcolor='black', 
             plot_bgcolor='black', 
-            font=dict(color='#FFD700'),
-            showlegend=False, # Grafik daha sade olsun diye legend kapattım
-            xaxis=dict(
-                range=[start_date, end_date], # Sadece son 1 ayı göster
-                fixedrange=True, # X ekseni kilitli (Zoom yok)
-                rangeslider=dict(visible=False) # Alt slider yok
-            ),
-            yaxis=dict(
-                fixedrange=True # Y ekseni kilitli (Zoom yok)
-            ),
-            dragmode=False # Sürükleme kapalı
+            showlegend=False,
+            xaxis=dict(range=[start_date, end_date], fixedrange=True, rangeslider=dict(visible=False)),
+            yaxis=dict(fixedrange=True),
+            dragmode=False
         )
-        # Modbar'ı tamamen gizle (Tepedeki zoom butonları vs.)
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': False})
+        chart_placeholder.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': False})
 
-else:
-    st.warning("Veri yükleniyor...")
-
-# Footer
-st.markdown("""<div class="footer-box">⚠️ <b>YASAL UYARI:</b> Yatırım tavsiyesi değildir.<br>FTHLABZ TECHNOLOGY © 2025</div>""", unsafe_allow_html=True)
+# Yasal Uyarı
+st.markdown("""<div class="footer-box">⚠️ YATIRIM TAVSİYESİ DEĞİLDİR.<br>FTHLABZ TECHNOLOGY © 2025</div>""", unsafe_allow_html=True)
