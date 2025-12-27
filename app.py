@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import timedelta
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & CSS (PRESTIGE TASARIM)
+# 1. AYARLAR & CSS
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
@@ -15,13 +15,13 @@ st.markdown("""
     /* Ana Tema */
     .stApp { background-color: #000000; color: #FFD700; }
     
-    /* GİZLEME (Header, Footer, Toolbar Yok) */
+    /* GİZLEME */
     header, footer {display: none !important;}
     [data-testid="stToolbar"] {display: none !important;}
     .stDeployButton {display: none !important;}
     div[class*="viewerBadge"] {display: none !important;}
     
-    /* INPUT ALANI (SARI ÇİZGİLİ & ORTALI) */
+    /* INPUT ALANI (SARI ÇİZGİLİ) */
     .stTextInput > div > div > input { 
         color: #FFD700 !important; 
         background-color: #050505 !important; 
@@ -54,84 +54,45 @@ st.markdown("""
         text-transform: uppercase;
     }
 
-    /* FİYAT VE SİNYAL KUTUSU */
-    .top-bar {
+    /* ÜST BAR (FİYAT - SİNYAL) */
+    .top-bar-container {
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-        padding: 0 5px;
+        padding-bottom: 5px;
+        font-family: 'Arial', sans-serif;
+    }
+    .price-text { font-size: 1.4em; font-weight: bold; color: white; }
+    .signal-text { font-size: 1.1em; font-weight: bold; text-align: right; }
+
+    /* İNDİKATÖR KUTULARI (CSS KARTLARI) */
+    .ind-card {
+        background-color: #111;
+        border: 1px solid #333;
+        border-radius: 5px;
+        padding: 8px;
         margin-bottom: 5px;
-        font-family: 'Arial', sans-serif;
+        text-align: center;
     }
-    .price-display {
-        font-size: 1.3em;
-        font-weight: bold;
-        color: #FFFFFF;
-    }
-    .signal-display {
-        font-size: 1.0em;
-        font-weight: bold;
-        text-align: right;
-    }
+    .ind-title { font-size: 0.9em; font-weight: bold; color: #FFD700; display: block; }
+    .ind-status { font-size: 0.8em; font-weight: bold; margin: 2px 0; display: block; }
+    .ind-val { font-size: 0.7em; color: #666; font-family: monospace; display: block; }
 
-    /* İNDİKATÖR GRİD YAPISI (TABLO GİBİ) */
-    .ind-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr; /* İki sütun */
-        gap: 10px;
-        margin-top: 10px;
-        font-family: 'Arial', sans-serif;
-    }
+    /* RENKLER */
+    .c-green { color: #00FF00; text-shadow: 0 0 5px #003300; }
+    .c-red { color: #FF0000; text-shadow: 0 0 5px #330000; }
+    .c-gray { color: #888; }
     
-    /* İndikatör Kutusu (Tekil) */
-    .ind-box {
-        background-color: #090909;
-        border: 1px solid #222;
-        border-radius: 4px;
-        padding: 5px;
-    }
-    
-    .ind-header {
-        display: flex;
-        justify-content: space-between;
-        font-size: 0.8em;
-        font-weight: bold;
-        color: #FFD700;
-    }
-    
-    .ind-status {
-        font-size: 0.75em;
-        font-weight: bold;
-    }
-    
-    .ind-value {
-        font-size: 0.9em;
-        color: #666; /* Gri Değer */
-        text-align: left;
-        margin-top: 2px;
-        font-family: 'Courier New', monospace;
-    }
-
-    /* PROFESYONEL RENKLER */
-    .bull-text { color: #00FF00; text-shadow: 0 0 5px #003300; } /* Neon Yeşil */
-    .bear-text { color: #FF3333; text-shadow: 0 0 5px #330000; } /* Parlak Kırmızı */
-    .neutral-text { color: #888; }
-    
-    /* Yasal Uyarı */
+    /* Footer */
     .footer-box { 
-        background-color: #1a0000; 
-        border-top: 1px solid #FF0000; 
-        padding: 10px; 
-        text-align: center; 
-        font-size: 0.6em; 
-        color: #aa4444; 
-        margin-top: 20px;
+        background-color: #1a0000; border-top: 1px solid #FF0000; 
+        padding: 10px; text-align: center; font-size: 0.6em; color: #aa4444; margin-top: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. LOGO BÖLÜMÜ
+# 2. LOGO
 # -----------------------------------------------------------------------------
 st.markdown("""
 <div class="company-name">⚜️ FTHLABZ ⚜️</div>
@@ -157,12 +118,7 @@ def get_smart_data(raw_symbol):
     df = yf.download(try_sym, period="1y", interval="1d", progress=False)
     if df is not None and len(df) > 10: return df, try_sym, None
     
-    # Fallback
     try_sym = raw_symbol
-    df = yf.download(try_sym, period="1y", interval="1d", progress=False)
-    if df is not None and len(df) > 10: return df, try_sym, None
-    
-    try_sym = raw_symbol + "-USD"
     df = yf.download(try_sym, period="1y", interval="1d", progress=False)
     if df is not None and len(df) > 10: return df, try_sym, None
 
@@ -186,27 +142,33 @@ def analyze_stock_data(df):
     return df
 
 # -----------------------------------------------------------------------------
-# 4. ARAYÜZ (PRESTIGE DESIGN)
+# 4. ARAYÜZ (GÜVENLİ YAPI)
 # -----------------------------------------------------------------------------
+# Ekranı daraltıyoruz
 c_left, c_center, c_right = st.columns([1, 2, 1])
 
 with c_center:
     if 'symbol' not in st.session_state: st.session_state.symbol = "THYAO"
     
-    top_placeholder = st.empty() 
+    # 1. ÜST BİLGİ YERİ
+    top_placeholder = st.empty()
+    
+    # 2. INPUT
     user_input = st.text_input("", value="THYAO", placeholder="Hisse Gir").upper()
-    bottom_placeholder = st.empty()
+    
+    # 3. İNDİKATÖRLER VE GRAFİK YERİ
+    ind_placeholder = st.container()
     chart_placeholder = st.empty()
 
     df, active_symbol, error = get_smart_data(user_input)
 
     if error:
-        top_placeholder.error("Hatalı Sembol")
+        top_placeholder.error("Sembol Bulunamadı")
     elif df is not None:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
-        # --- MANTIK ---
+        # MANTIK
         zlsma_bull = last['Close'] > last['ZLSMA']
         sma_bull = last['Close'] > last['SMA21']
         sar_bull = last['Close'] > last['SAR']
@@ -215,65 +177,64 @@ with c_center:
         bull_count = sum([zlsma_bull, sma_bull, sar_bull, adx_bull])
         bear_count = 4 - bull_count
         
-        # 1. ANA SİNYAL
+        # ANA SİNYAL CSS
         if bull_count >= 3:
             sig_txt = "GÜÇLÜ AL"
-            sig_css = "bull-text"
+            sig_cls = "c-green"
         elif bear_count >= 3:
             sig_txt = "GÜÇLÜ SAT"
-            sig_css = "bear-text"
+            sig_cls = "c-red"
         else:
             sig_txt = "NÖTR"
-            sig_css = "neutral-text"
+            sig_cls = "c-gray"
 
-        # 2. İNDİKATÖR HTML OLUŞTURUCU (ÜÇGEN + YAZI + DEĞER)
-        def create_ind_html(label, value, is_bull):
+        # --- GÖRSELLEŞTİRME ---
+        
+        # A) FİYAT VE SİNYAL (HTML)
+        top_html = f"""
+        <div class="top-bar-container">
+            <div class="price-text">{last['Close']:.2f} ₺</div>
+            <div class="signal-text {sig_cls}">{sig_txt}</div>
+        </div>
+        """
+        top_placeholder.markdown(top_html, unsafe_allow_html=True)
+
+        # B) İNDİKATÖRLER (KUTULAR) - GÜVENLİ YÖNTEM
+        # Tek bir büyük HTML yerine, Streamlit kolonları içine küçük HTML'ler koyuyoruz.
+        # Bu yöntem kodun ekrana metin olarak basılmasını engeller.
+        
+        def make_card(label, val, is_bull):
             if is_bull:
-                icon = "▲" # Dolu Üçgen
-                status = "GÜÇLÜ"
-                css = "bull-text"
+                icon = "▲"
+                st_text = "GÜÇLÜ"
+                cls = "c-green"
             else:
-                icon = "▼" # Dolu Ters Üçgen
-                status = "ZAYIF"
-                css = "bear-text"
+                icon = "▼"
+                st_text = "ZAYIF"
+                cls = "c-red"
             
             return f"""
-            <div class="ind-box">
-                <div class="ind-header">
-                    <span>{label}</span>
-                    <span class="{css}">{icon} {status}</span>
-                </div>
-                <div class="ind-value">{value:.2f}</div>
+            <div class="ind-card">
+                <span class="ind-title">{label}</span>
+                <span class="ind-status {cls}">{icon} {st_text}</span>
+                <span class="ind-val">{val:.2f}</span>
             </div>
             """
 
-        zl_html = create_ind_html("ZL", last['ZLSMA'], zlsma_bull)
-        sm_html = create_ind_html("SM", last['SMA21'], sma_bull)
-        sa_html = create_ind_html("SA", last['SAR'], sar_bull)
-        ad_html = create_ind_html("AD", last['ADX_VAL'], adx_bull)
+        with ind_placeholder:
+            # İsim
+            st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
+            
+            # 2 Satır 2 Sütun Izgara
+            r1c1, r1c2 = st.columns(2)
+            with r1c1: st.markdown(make_card("ZL", last['ZLSMA'], zlsma_bull), unsafe_allow_html=True)
+            with r1c2: st.markdown(make_card("SM", last['SMA21'], sma_bull), unsafe_allow_html=True)
+            
+            r2c1, r2c2 = st.columns(2)
+            with r2c1: st.markdown(make_card("SA", last['SAR'], sar_bull), unsafe_allow_html=True)
+            with r2c2: st.markdown(make_card("AD", last['ADX_VAL'], adx_bull), unsafe_allow_html=True)
 
-        # --- EKRANA BASMA ---
-
-        # A) ÜST KISIM (FİYAT ₺ + ANA SİNYAL)
-        top_placeholder.markdown(f"""
-        <div class="top-bar">
-            <div class="price-display">{last['Close']:.2f} ₺</div>
-            <div class="signal-display {sig_css}">{sig_txt}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # B) ALT KISIM (İNDİKATÖR GRİDİ)
-        bottom_placeholder.markdown(f"""
-        <div style='text-align:center; color:#444; font-size:0.6em; margin-top:2px;'>{active_symbol}</div>
-        <div class="ind-grid">
-            {zl_html}
-            {sm_html}
-            {sa_html}
-            {ad_html}
-        </div>
-        """, unsafe_allow_html=True)
-
-        # C) GRAFİK (SABİT)
+        # C) GRAFİK
         end_date = df.index[-1]
         start_date = end_date - timedelta(days=30)
         
@@ -289,8 +250,8 @@ with c_center:
             paper_bgcolor='black', 
             plot_bgcolor='black', 
             showlegend=False,
-            xaxis=dict(range=[start_date, end_date], fixedrange=True, visible=False), # X ekseni yazıları gizlendi (daha temiz)
-            yaxis=dict(fixedrange=True, visible=False), # Y ekseni gizlendi (daha temiz)
+            xaxis=dict(range=[start_date, end_date], fixedrange=True, visible=False),
+            yaxis=dict(fixedrange=True, visible=False),
             dragmode=False
         )
         chart_placeholder.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': False})
