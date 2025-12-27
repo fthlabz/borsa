@@ -215,8 +215,8 @@ with c_center:
             sig_cls = "c-red"
         else:
             # Aslan ile diğerleri uyuşmuyor (NÖTR)
-            sig_txt = "NÖTR / BEKLE"
-            sig_cls = "c-gray"
+            sig_txt = "KARARSIZ PİYASA"
+            sig_cls = "yellow"
 
         # A) FİYAT VE SİNYAL
         top_html = f"""
