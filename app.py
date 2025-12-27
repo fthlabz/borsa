@@ -5,33 +5,46 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 
 # -----------------------------------------------------------------------------
-# 1. AYARLAR & TASARIM (FTHLABZ GHOST MODE - V7)
+# 1. AYARLAR & TASARIM (FTHLABZ CAMOUFLAGE MODE)
 # -----------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Fthlabz Trader", page_icon="⚜️")
 
 st.markdown("""
 <style>
-    /* Ana Tema: Siyah & Gold */
+    /* Ana Tema */
     .stApp { background-color: #000000; color: #FFD700; }
     
     /* ------------------------------------------------------- */
-    /* 🛑 GİZLEME BÖLÜMÜ (NÜKLEER MÜDAHALE) 🛑 */
+    /* 🛑 GİZLEME VE KAMUFLAJ BÖLÜMÜ 🛑 */
     /* ------------------------------------------------------- */
     
-    /* 1. Standart Header ve Footer'ları yok et */
-    header, footer {visibility: hidden !important; display: none !important; height: 0px !important;}
-    header[data-testid="stHeader"] {display: none !important;}
+    /* 1. Üst barı yok et */
+    header {visibility: hidden !important;}
+    [data-testid="stHeader"] {display: none !important;}
     
-    /* 2. Toolbar ve Menüleri yok et */
-    [data-testid="stToolbar"] {display: none !important;}
-    .stDeployButton {display: none !important;}
-    #MainMenu {visibility: hidden !important;}
+    /* 2. Alt barı (Footer) YOK ETME VE GİZLEME */
+    footer {
+        visibility: hidden !important;
+        display: none !important;
+        height: 0px !important;
+    }
     
-    /* 3. JOKER MÜDAHALE: Alt kısımdaki o inatçı "Built with..." yazısını yakala */
-    /* İsminin içinde 'viewerBadge' geçen her şeyi siler */
-    div[class*="viewerBadge"] {display: none !important;}
+    /* 3. O inatçı "Viewer Badge" (Sağ alttaki yazı) için ÖZEL MÜDAHALE */
+    /* Onu ekranın altına itiyoruz ve görünmez yapıyoruz */
+    .viewerBadge_container__1QSob {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
     
-    /* 4. Fullscreen butonunu hedef al ve yok et */
+    /* Eğer sınıf ismi değişirse diye JOKER MÜDAHALE: */
+    /* Linki 'streamlit.io' olan tüm alt elementleri yok et */
+    a[href*="streamlit.io"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* 4. Fullscreen butonunu yok et */
     button[title="View fullscreen"] {display: none !important;}
     
     /* ------------------------------------------------------- */
@@ -46,10 +59,8 @@ st.markdown("""
         border-radius: 10px;
     }
     
-    /* Metinler */
     h1, h2, h3, p, span, label, div { color: #FFD700 !important; font-family: 'Helvetica', sans-serif; }
     
-    /* Kartlar */
     div[data-testid="metric-container"] { 
         background-color: #111111; 
         border: 1px solid #333; 
@@ -59,7 +70,6 @@ st.markdown("""
         padding: 5px;
     }
     
-    /* Footer Box */
     .footer-box { 
         background-color: #1a0000; 
         border-top: 2px solid #FF0000; 
@@ -91,7 +101,6 @@ def analyze_stock(symbol):
         if df is None or len(df) < 50: return None, "Veri yetersiz."
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.droplevel(1)
 
-        # İndikatörler
         df['SMA21'] = ta.sma(df['Close'], length=21)
         df['ZLSMA'] = ta.linreg(df['Close'], length=32, offset=0)
         df.ta.psar(af0=0.02, af=0.02, max_af=0.2, append=True)
@@ -125,7 +134,6 @@ elif df is not None:
     last = df.iloc[-1]
     prev = df.iloc[-2]
     
-    # Logic
     zlsma_bull = last['Close'] > last['ZLSMA']
     sma_bull = last['Close'] > last['SMA21']
     sar_bull = last['Close'] > last['SAR']
@@ -138,7 +146,6 @@ elif df is not None:
     if bull_count >= 3: signal_text = "🚀 AL" if bull_count == 3 else "🚀 GÜÇLÜ AL"
     elif bear_count >= 3: signal_text = "🔻 SAT" if bear_count == 3 else "🩸 GÜÇLÜ SAT"
 
-    # Metrikler
     m1, m2 = st.columns(2)
     with m1:
         st.metric("FİYAT", f"{last['Close']:.2f}", f"{(last['Close'] - prev['Close']):.2f}")
@@ -162,7 +169,6 @@ elif df is not None:
     with m6:
         st.metric("ADX", "🟢 BOĞA" if adx_bull else "🔴 AYI", f"{last['ADX_VAL']:.1f}", delta_color="off")
 
-    # Grafik
     st.markdown("---")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
@@ -175,5 +181,4 @@ elif df is not None:
 else:
     st.warning("Veriler yükleniyor...")
 
-# Footer
 st.markdown("""<div class="footer-box">⚠️ <b>YASAL UYARI:</b> Yatırım tavsiyesi değildir.<br>FTHLABZ TECHNOLOGY © 2025</div>""", unsafe_allow_html=True)
