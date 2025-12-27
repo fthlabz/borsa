@@ -181,31 +181,29 @@ with c_center:
         
         # --- SİNYAL MANTIĞI ---
         
-        # 1. SAR (TAZI): Fiyat SAR'ın üstündeyse AL
+        # 1. SAR (TAZI)
         sar_bull = last['Close'] > last['SAR']
         
-        # 2. ADX (ASLAN): DI+ > DI- ise AL
+        # 2. ADX (ASLAN)
         adx_bull = last['DMP_VAL'] > last['DMN_VAL']
         
-        # 3. ZLSMA (ŞAHİN): Fiyat üstündeyse AL
+        # 3. ZLSMA (ŞAHİN)
         zlsma_bull = last['Close'] > last['ZLSMA']
         
-        # SİNYAL KARARI
+        # SİNYAL KARARI (ÇOĞUNLUK OYU)
         bull_signals = [sar_bull, adx_bull, zlsma_bull]
+        bull_score = sum(bull_signals) # 0, 1, 2 veya 3
         
-        if all(bull_signals): # Hepsi AL ise
-            sig_txt = "BOĞA GELDİ" # Yeni İsim
+        # DÜZELTME: "ZAYIF" kelimesini kaldırdık.
+        # Çoğunluk AL yönündeyse -> BOĞA GELDİ
+        # Çoğunluk SAT yönündeyse -> AYI GELDİ
+        
+        if bull_score >= 2:
+            sig_txt = "BOĞA GELDİ"
             sig_cls = "c-green"
-        elif not any(bull_signals): # Hepsi SAT ise
-            sig_txt = "AYI GELDİ"  # Yeni İsim
-            sig_cls = "c-red"
         else:
-            if sum(bull_signals) >= 2:
-                sig_txt = "AL (ZAYIF)"
-                sig_cls = "c-green"
-            else:
-                sig_txt = "SAT (ZAYIF)"
-                sig_cls = "c-red"
+            sig_txt = "AYI GELDİ"
+            sig_cls = "c-red"
 
         # A) FİYAT VE SİNYAL
         top_html = f"""
@@ -216,7 +214,7 @@ with c_center:
         """
         top_placeholder.markdown(top_html, unsafe_allow_html=True)
 
-        # B) İNDİKATÖRLER (KARTLAR - İSİMLER DEĞİŞTİ)
+        # B) İNDİKATÖRLER (KARTLAR)
         def make_card(label, val_str, is_bull):
             if is_bull:
                 icon = "▲"
@@ -238,7 +236,7 @@ with c_center:
         with ind_placeholder:
             st.markdown(f"<div style='text-align:center; color:#444; font-size:0.6em; margin-bottom:5px;'>{active_symbol}</div>", unsafe_allow_html=True)
             
-            # SATIR 1: ŞAHİN (ZLSMA) ve ÖKÜZ (SMA 21)
+            # SATIR 1
             r1c1, r1c2 = st.columns(2)
             with r1c1: 
                 val_txt = f"{last['ZLSMA']:.2f}"
@@ -248,17 +246,15 @@ with c_center:
                 val_txt = f"{last['SMA21']:.2f}"
                 st.markdown(make_card("ÖKÜZ", val_txt, sma_bull), unsafe_allow_html=True)
             
-            # SATIR 2: TAZI (SAR) ve ASLAN (ADX)
+            # SATIR 2
             r2c1, r2c2 = st.columns(2)
             with r2c1: 
                 # SAR Değeri
                 val_txt = f"{last['SAR']:.2f}"
-                sar_text = "AL" if sar_bull else "SAT"
-                # İsim: TAZI
-                st.markdown(make_card(f"TAZI ({sar_text})", val_txt, sar_bull), unsafe_allow_html=True)
+                # İsim: SADECE TAZI (Yanındaki parantez kalktı)
+                st.markdown(make_card("TAZI", val_txt, sar_bull), unsafe_allow_html=True)
             with r2c2:
                  val_txt = f"D+:{last['DMP_VAL']:.1f} | D-:{last['DMN_VAL']:.1f}"
-                 # İsim: ASLAN
                  st.markdown(make_card("ASLAN", val_txt, adx_bull), unsafe_allow_html=True)
 
         # C) GRAFİK
@@ -268,12 +264,9 @@ with c_center:
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
-        
-        # İsimleri Grafikte de Güncelledik
         fig.add_trace(go.Scatter(x=df.index, y=df['ZLSMA'], line=dict(color='yellow', width=2), name='ŞAHİN'))
         fig.add_trace(go.Scatter(x=df.index, y=df['SMA21'], line=dict(color='#00BFFF', width=1), name='ÖKÜZ'))
         
-        # TAZI (SAR) - Cross Style
         fig.add_trace(go.Scatter(
             x=df.index, 
             y=df['SAR'], 
