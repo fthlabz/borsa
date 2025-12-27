@@ -78,13 +78,12 @@ st.markdown("""
     .ind-status { font-size: 0.8em; font-weight: bold; margin: 2px 0; display: block; }
     .ind-val { font-size: 0.7em; color: #666; font-family: monospace; display: block; }
 
-    /* GRAFİK İÇİN ÖZEL ÇERÇEVE (CSS İLE) */
-    /* Streamlit'in grafik kapsayıcısını hedefleyip çerçeve ekliyoruz */
+    /* GRAFİK ÇERÇEVESİ */
     div[data-testid="stPlotlyChart"] {
         border: 1px solid #333;
         border-radius: 6px;
         padding: 5px;
-        background-color: #080808; /* Grafiğin arkasına hafif ton */
+        background-color: #080808;
         margin-top: 10px;
     }
 
@@ -172,6 +171,10 @@ with c_center:
         df = analyze_stock_data(df)
         last = df.iloc[-1]
         
+        # PARA BİRİMİ ALGISI
+        # Eğer ".IS" içeriyorsa TL, yoksa Dolar varsayalım
+        currency_icon = "₺" if ".IS" in active_symbol else "$"
+        
         # MANTIK
         zlsma_bull = last['Close'] > last['ZLSMA']
         sma_bull = last['Close'] > last['SMA21']
@@ -191,10 +194,10 @@ with c_center:
             sig_txt = "NÖTR"
             sig_cls = "c-gray"
 
-        # A) FİYAT VE SİNYAL
+        # A) FİYAT VE SİNYAL (Dinamik Para Birimi)
         top_html = f"""
         <div class="top-bar-container">
-            <div class="price-text">{last['Close']:.2f} ₺</div>
+            <div class="price-text">{last['Close']:.2f} {currency_icon}</div>
             <div class="signal-text {sig_cls}">{sig_txt}</div>
         </div>
         """
@@ -228,12 +231,10 @@ with c_center:
             with r2c1: st.markdown(make_card("SA", last['SAR'], sar_bull), unsafe_allow_html=True)
             with r2c2: st.markdown(make_card("AD", last['ADX_VAL'], adx_bull), unsafe_allow_html=True)
 
-        # C) GRAFİK (ÇERÇEVELİ & SON MUM AYARLI)
+        # C) GRAFİK
         end_date = df.index[-1]
         start_date = end_date - timedelta(days=30)
-        
-        # Son mumun görünmesi için sağa boşluk ekliyoruz (Buffer)
-        buffer_date = end_date + timedelta(days=3) # +3 gün ekledik ki sağda boşluk kalsın
+        buffer_date = end_date + timedelta(days=3)
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Fiyat'))
@@ -247,7 +248,6 @@ with c_center:
             paper_bgcolor='black', 
             plot_bgcolor='black', 
             showlegend=False,
-            # X Ekseninde Bitiş Tarihini (end_date) değil, tamponlu tarihi (buffer_date) kullanıyoruz
             xaxis=dict(range=[start_date, buffer_date], fixedrange=True, visible=False),
             yaxis=dict(fixedrange=True, visible=False),
             dragmode=False
